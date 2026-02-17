@@ -13,7 +13,6 @@ A Streamlit dashboard that ingests curated RSS feeds, detects automotive supply 
 
 ## Sidebar (Global)
 - Refresh data button
-- Download PDF report button (prints KPIs + Top 3 events with mitigation)
 - Filters:
   - Date range
   - Categories (PESTEL + Operational)
@@ -58,7 +57,7 @@ Use SQLite or DuckDB.
    - time series: (a) risk severity over time, (b) event volume over time
    - Top 3 current high-risk events ranked by:
      (1) risk_score, (2) exposure_usd_est, (3) recency
-8) Mitigation generation: ONLY Top 3 events in Command Center and PDF export
+8) Mitigation generation: ONLY Top 3 events in Command Center
    - Deterministic playbook by disruption_type/time_sensitivity/component
    - LLM humanizes wording and prioritizes actions; no invention
    - Cache mitigation text in enriched_events

@@ -1,5 +1,4 @@
 streamlit
 python-dateutil
 psycopg2-binary
-fpdf2
-pydantic>=2.7.0
+pydantic

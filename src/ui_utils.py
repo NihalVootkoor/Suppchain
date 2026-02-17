@@ -8,12 +8,10 @@ from typing import Iterable, Tuple
 
 import streamlit as st
 
-from src.aggregation import compute_kpis
 from src.backfill import run_seed_backfill
 from src.config import get_config
 from src.date_utils import parse_datetime
 from src.debug import get_debug_data
-from src.pdf_report import generate_pdf
 from src.rss_ingest import run_pipeline
 from src.storage import DbPaths, fetch_enriched_events, get_meta_value, init_db, set_meta_value
 from src.storage_utils import row_to_dict
@@ -139,37 +137,6 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         f"{len(selected_categories)} categories in {len(selected_regions)} regions"
     )
     st.sidebar.caption(status_line)
-    if filtered:
-        kpis = compute_kpis(filtered)
-        top_events = sorted(
-            filtered,
-            key=lambda item: (
-                float(item["risk_score_0to100"]),
-                float(item["exposure_usd_est"]),
-                str(item["published_at"]),
-            ),
-            reverse=True,
-        )[:3]
-        pdf_bytes = generate_pdf(
-            top_events,
-            kpis={
-                "Total Active Risk Events": kpis.total_events,
-                "High/Critical Events": kpis.high_critical_events,
-                "Avg Severity Today": kpis.avg_severity_today,
-                "Delta vs Yesterday Avg Severity": kpis.delta_vs_yesterday,
-                "Avg Estimated Delay (days)": kpis.avg_delay_days,
-                "Total $ Exposure at Risk (Estimated)": kpis.total_exposure_usd,
-            },
-        )
-        if pdf_bytes:
-            st.sidebar.download_button(
-                "Download PDF report",
-                data=pdf_bytes,
-                file_name="risk_report.pdf",
-                mime="application/pdf",
-            )
-        else:
-            st.sidebar.info("PDF export requires the fpdf package.")
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
     st.sidebar.caption("Built by Nihal Vootkoor")
     return filtered, show_debug
