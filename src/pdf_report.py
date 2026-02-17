@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
 from io import BytesIO
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_text(value: object) -> str:
+    """Coerce text to latin-1 safe string for built-in PDF fonts."""
+
+    text = str(value or "")
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        normalized = unicodedata.normalize("NFKD", text)
+        return normalized.encode("latin-1", "ignore").decode("latin-1")
 
 
 def generate_pdf(
@@ -28,16 +41,16 @@ def generate_pdf(
     if kpis:
         pdf.set_font("Arial", size=10)
         for key, value in kpis.items():
-            pdf.cell(0, 6, f"{key}: {value}", ln=True)
+            pdf.cell(0, 6, _safe_text(f"{key}: {value}"), ln=True)
         pdf.ln(2)
     for event in events:
         pdf.set_font("Arial", style="B", size=11)
-        pdf.multi_cell(0, 6, str(event.get("title", "Untitled")))
+        pdf.multi_cell(0, 6, _safe_text(event.get("title", "Untitled")))
         pdf.set_font("Arial", size=10)
-        pdf.multi_cell(0, 5, str(event.get("event_summary", "")))
+        pdf.multi_cell(0, 5, _safe_text(event.get("event_summary", "")))
         mitigation = event.get("mitigation_description")
         if mitigation:
-            pdf.multi_cell(0, 5, str(mitigation))
+            pdf.multi_cell(0, 5, _safe_text(mitigation))
         pdf.ln(2)
     output = BytesIO()
     pdf.output(output)
