@@ -140,7 +140,8 @@ def get_config(project_root: Optional[Path] = None) -> AppConfig:
     root = (project_root or Path(__file__).resolve().parents[1]).resolve()
     data_dir = (root / "data").resolve()
     db_url = (
-        os.environ.get("SUPABASE_DB_URL")
+        _get_secret_db_url()
+        or os.environ.get("SUPABASE_DB_URL")
         or os.environ.get("SUPABASE_DATABASE_URL")
         or os.environ.get("DATABASE_URL")
     )
@@ -166,4 +167,22 @@ def get_config(project_root: Optional[Path] = None) -> AppConfig:
             "https://www.just-auto.com/feed/": 0.7,
             "https://www.freightwaves.com/feed": 0.6,
         },
+    )
+
+
+def _get_secret_db_url() -> Optional[str]:
+    """Read Supabase connection from Streamlit secrets when available."""
+
+    try:
+        import streamlit as st
+    except Exception:
+        return None
+    try:
+        secrets = st.secrets
+    except Exception:
+        return None
+    return (
+        secrets.get("SUPABASE_DB_URL")
+        or secrets.get("SUPABASE_DATABASE_URL")
+        or secrets.get("DATABASE_URL")
     )
