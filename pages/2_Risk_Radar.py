@@ -51,7 +51,7 @@ def main() -> None:
     else:
         st.info("No regional data available.")
     st.subheader("PESTEL Category Breakdown")
-    st.dataframe(category_breakdown(filtered), use_container_width=True)
+    st.dataframe(category_breakdown(filtered), width="stretch")
 
 
 if __name__ == "__main__":

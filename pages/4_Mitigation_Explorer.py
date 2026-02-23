@@ -21,7 +21,7 @@ def main() -> None:
         st.info("No events available. Use Refresh data to ingest RSS feeds.")
         return
     df = pd.DataFrame(filtered)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
 
 if __name__ == "__main__":

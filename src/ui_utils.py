@@ -91,6 +91,9 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
 
     config = get_config()
     st.sidebar.header("Controls")
+    st.sidebar.caption(
+        "Database: **Supabase**" if config.db_url else "Database: **Local (SQLite)**"
+    )
     if auto_refresh_if_due(config):
         st.sidebar.success("Auto refresh complete.")
     refresh_clicked = st.sidebar.button("Refresh data")

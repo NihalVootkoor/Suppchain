@@ -181,8 +181,17 @@ def _get_secret_db_url() -> Optional[str]:
         secrets = st.secrets
     except Exception:
         return None
-    return (
-        secrets.get("SUPABASE_DB_URL")
-        or secrets.get("SUPABASE_DATABASE_URL")
-        or secrets.get("DATABASE_URL")
-    )
+    # Top-level keys (Streamlit Cloud Secrets UI)
+    for key in ("SUPABASE_DB_URL", "SUPABASE_DATABASE_URL", "DATABASE_URL"):
+        val = secrets.get(key)
+        if val and isinstance(val, str):
+            return val
+    # Nested e.g. secrets["database"]["url"]
+    for section in ("database", "supabase"):
+        block = secrets.get(section)
+        if isinstance(block, dict):
+            for k in ("url", "SUPABASE_DB_URL", "database_url"):
+                val = block.get(k)
+                if val and isinstance(val, str):
+                    return val
+    return None
