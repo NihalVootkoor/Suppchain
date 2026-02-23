@@ -11,8 +11,11 @@ from src.ui_utils import load_events, render_debug_panel, render_sidebar
 def main() -> None:
     """Render the Command Center page."""
 
-    st.title("Command Center")
     config = get_config()
+    db_label = "Supabase" if config.db_url else "Local (SQLite)"
+    st.info(f"**Database:** {db_label}")
+
+    st.title("Command Center")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:
