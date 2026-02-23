@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -121,17 +120,31 @@ NEGATIVE_KEYWORDS = [
     "launch event",
 ]
 
-@dataclass(frozen=True)
 class AppConfig:
     """Configuration for the application."""
 
-    project_root: Path
-    db_path: Path
-    db_url: Optional[str]
-    rss_urls: tuple[str, ...]
-    retention_days: int
-    enriched_retention_days: int
-    source_weights: dict[str, float]
+    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights")
+
+    def __init__(
+        self,
+        project_root: Path,
+        db_path: Path,
+        db_url: Optional[str],
+        rss_urls: tuple[str, ...],
+        retention_days: int,
+        enriched_retention_days: int,
+        source_weights: dict[str, float],
+    ) -> None:
+        object.__setattr__(self, "project_root", project_root)
+        object.__setattr__(self, "db_path", db_path)
+        object.__setattr__(self, "db_url", db_url)
+        object.__setattr__(self, "rss_urls", rss_urls)
+        object.__setattr__(self, "retention_days", retention_days)
+        object.__setattr__(self, "enriched_retention_days", enriched_retention_days)
+        object.__setattr__(self, "source_weights", source_weights)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("AppConfig is immutable")
 
 
 def get_config(project_root: Optional[Path] = None) -> AppConfig:
