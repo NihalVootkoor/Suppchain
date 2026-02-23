@@ -104,7 +104,7 @@ def _set_schema_version_sqlite(conn: sqlite3.Connection, version: int) -> None:
 def _get_schema_version_pg(cur) -> int:
     cur.execute("SELECT value FROM schema_meta WHERE key = %s", ("schema_version",))
     row = cur.fetchone()
-    return int(row["value"]) if row else 0
+    return int(row[0]) if row else 0
 
 
 def _set_schema_version_pg(cur, version: int) -> None:
