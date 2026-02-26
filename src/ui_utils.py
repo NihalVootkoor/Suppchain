@@ -111,7 +111,8 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         st.sidebar.success("**Groq LLM:** configured")
     else:
         st.sidebar.warning("**Groq LLM:** not configured")
-    if auto_refresh_if_due(config):
+    # Skip auto-refresh when using Supabase (Cloud) to avoid DB statement timeouts
+    if not config.db_url and auto_refresh_if_due(config):
         st.sidebar.success("Auto refresh complete.")
     refresh_clicked = st.sidebar.button("Refresh data")
     if refresh_clicked:
@@ -281,5 +282,5 @@ def _render_events_dataframe_fallback(df: pd.DataFrame) -> None:
             "article_url": st.column_config.LinkColumn("Link", display_text="Open"),
         },
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
