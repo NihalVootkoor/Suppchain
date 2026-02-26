@@ -120,10 +120,50 @@ NEGATIVE_KEYWORDS = [
     "launch event",
 ]
 
+
+def _get_groq_api_key() -> Optional[str]:
+    """Groq API key from env, Streamlit secrets, or .streamlit/secrets.toml file."""
+    key = os.environ.get("GROQ_API_KEY")
+    if isinstance(key, str) and key.strip():
+        return key.strip()
+    try:
+        import streamlit as st
+        secrets = getattr(st, "secrets", None)
+        if secrets is not None:
+            v = getattr(secrets, "GROQ_API_KEY", None)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+            if callable(getattr(secrets, "get", None)):
+                v = secrets.get("GROQ_API_KEY")
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+                for section in ("groq", "llm"):
+                    block = secrets.get(section)
+                    if block is not None:
+                        ak = block.get("api_key") if isinstance(block, dict) else getattr(block, "api_key", None)
+                        if isinstance(ak, str) and ak.strip():
+                            return ak.strip()
+    except Exception:
+        pass
+    # Fallback: read .streamlit/secrets.toml from project root (works when st.secrets not ready)
+    try:
+        root = Path(__file__).resolve().parents[1]
+        secrets_file = root / ".streamlit" / "secrets.toml"
+        if secrets_file.is_file():
+            text = secrets_file.read_text(encoding="utf-8")
+            import re
+            m = re.search(r'GROQ_API_KEY\s*=\s*["\']([^"\']+)["\']', text)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+    except Exception:
+        pass
+    return None
+
+
 class AppConfig:
     """Configuration for the application."""
 
-    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights")
+    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights", "groq_api_key", "groq_model")
 
     def __init__(
         self,
@@ -134,6 +174,8 @@ class AppConfig:
         retention_days: int,
         enriched_retention_days: int,
         source_weights: dict[str, float],
+        groq_api_key: Optional[str] = None,
+        groq_model: str = "llama-3.1-8b-instant",
     ) -> None:
         object.__setattr__(self, "project_root", project_root)
         object.__setattr__(self, "db_path", db_path)
@@ -142,6 +184,8 @@ class AppConfig:
         object.__setattr__(self, "retention_days", retention_days)
         object.__setattr__(self, "enriched_retention_days", enriched_retention_days)
         object.__setattr__(self, "source_weights", source_weights)
+        object.__setattr__(self, "groq_api_key", groq_api_key or _get_groq_api_key())
+        object.__setattr__(self, "groq_model", os.environ.get("GROQ_MODEL") or groq_model)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("AppConfig is immutable")
@@ -162,6 +206,8 @@ def get_config(project_root: Optional[Path] = None) -> AppConfig:
         project_root=root,
         db_path=data_dir / "app.db",
         db_url=db_url,
+        groq_api_key=None,
+        groq_model="llama-3.1-8b-instant",
         rss_urls=(
             "https://news.google.com/rss/search?q=automotive%20supply%20chain%20disruption&hl=en-US&gl=US&ceid=US:en",
             "https://news.google.com/rss/search?q=auto%20plant%20shutdown%20strike&hl=en-US&gl=US&ceid=US:en",

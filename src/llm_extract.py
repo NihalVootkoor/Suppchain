@@ -16,7 +16,9 @@ from src.config import (
     OEMS,
     RISK_CATEGORIES,
     TIER1S,
+    get_config,
 )
+from src.groq_client import classify_disruption_and_risks
 from src.models import LLMExtraction, RawArticle
 from src.url_utils import hash_id
 
@@ -271,7 +273,29 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
     if risk_category not in RISK_CATEGORIES:
         risk_category = "Operational"
 
+    risks_identified: Optional[str] = None
+    groq_geo_country: Optional[str] = None
+    if disruption_type == "Other":
+        config = get_config()
+        if config.groq_api_key:
+            groq_result = classify_disruption_and_risks(
+                text, config.groq_api_key, model=config.groq_model
+            )
+            if groq_result:
+                disruption_type = groq_result.get("disruption_type") or disruption_type
+                if disruption_type not in DISRUPTION_TYPES:
+                    disruption_type = "Other"
+                risk_category = groq_result.get("risk_category") or risk_category
+                if risk_category not in RISK_CATEGORIES:
+                    risk_category = "Operational"
+                risks_identified = groq_result.get("risks_identified") or None
+                groq_geo_country = groq_result.get("geo_country")
+
     geo_country, geo_region, geo_conf = _extract_geo(text)
+    if geo_country == "Unknown" and groq_geo_country:
+        geo_country = groq_geo_country
+        geo_region = "Unknown"
+        geo_conf = "Medium"
     oems = _find_entities(text, OEMS)
     suppliers = _find_entities(text, TIER1S)
     components = _find_entities(text, AUTO_TERMS)
@@ -320,6 +344,7 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
         "estimated_delay_days": int(delay_days),
         "delay_confidence": delay_conf,
         "delay_rationale": delay_rat,
+        "risks_identified": risks_identified,
     }
     return LLMExtraction(**payload)
 

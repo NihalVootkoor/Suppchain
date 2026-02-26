@@ -1,4 +1,9 @@
 streamlit
 python-dateutil
 psycopg2-binary
+fpdf2
 pydantic
+groq
+plotly
+streamlit-aggrid
+pydeck

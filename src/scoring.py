@@ -55,7 +55,7 @@ def build_enriched_event(article: RawArticle, extraction: LLMExtraction) -> Enri
         ingested_at=article.ingested_at,
         title=article.title,
         event_summary=extraction.event_summary,
-        dashboard_blurb=None,
+        dashboard_blurb=extraction.risks_identified if getattr(extraction, "risks_identified", None) else None,
         reason_flagged=extraction.reason_flagged,
         oem_entities=extraction.oem_entities,
         supplier_entities=extraction.supplier_entities,

@@ -5,16 +5,20 @@ import streamlit as st
 
 from src.aggregation import compute_kpis
 from src.config import get_config
-from src.ui_utils import load_events, render_debug_panel, render_sidebar
+from src.ui_utils import (
+    load_events,
+    render_debug_panel,
+    render_events_table,
+    render_groq_status,
+    render_sidebar,
+)
 
 
 def main() -> None:
     """Render the Command Center page."""
-
     config = get_config()
-    db_label = "Supabase" if config.db_url else "Local (SQLite)"
-    st.info(f"**Database:** {db_label}")
-
+    st.info(f"**Database:** {'Supabase' if config.db_url else 'Local (SQLite)'}")
+    render_groq_status()
     st.title("Command Center")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
@@ -42,14 +46,25 @@ def main() -> None:
         reverse=True,
     )[:3]
     st.subheader("Top 3 Current High-Risk Events")
+    st.caption("Ranked by risk score, estimated exposure, and recency. Mitigation is personalized when Groq LLM is configured.")
     for event in top_events:
         st.markdown(f"### [{event['title']}]({event['article_url']})")
         st.write(event["event_summary"])
-        st.write(f"Why this is a risk: {event['reason_flagged']}")
+        st.write(f"**Why this is a risk:** {event['reason_flagged']}")
+        blurb = event.get("dashboard_blurb")
+        if blurb:
+            st.write(f"**Risks identified:** {blurb}")
         actions = event.get("mitigation_actions") or []
         if actions:
-            st.write("Mitigation actions:")
+            st.write("**Mitigation actions:**")
             for action in actions:
                 st.write(f"- {action}")
+        if event.get("mitigation_description"):
+            st.caption(event["mitigation_description"])
+    st.subheader("All Events")
+    st.caption("Sort, filter, and paginate. AG Grid when available; otherwise Streamlit native table.")
+    render_events_table(filtered, use_aggrid=True, height=420, selection_mode="single")
+
+
 if __name__ == "__main__":
     main()

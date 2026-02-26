@@ -82,6 +82,7 @@ class LLMExtraction(BaseModel):
     component_criticality: Criticality
     llm_validation_passed: bool
     rejected_reason: Optional[str] = None
+    risks_identified: Optional[str] = None  # From Groq when used for classification
 
 
 @dataclass

@@ -5,14 +5,14 @@ import pandas as pd
 import streamlit as st
 
 from src.config import get_config
-from src.ui_utils import load_events, render_debug_panel, render_sidebar
+from src.ui_utils import load_events, render_debug_panel, render_groq_status, render_sidebar
 
 
 def main() -> None:
     """Render the Trends page."""
-
-    st.title("Trends")
     config = get_config()
+    render_groq_status()
+    st.title("Trends")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:

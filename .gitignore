@@ -1,0 +1,14 @@
+# Secrets – do not commit
+.env
+.streamlit/secrets.toml
+
+# Data / DB
+data/*.db
+data/*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
