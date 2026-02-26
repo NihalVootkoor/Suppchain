@@ -154,7 +154,8 @@ def _render_world_risk_map(events: list[dict], layer_type: str) -> None:
             "html": "<b>{title}</b><br/>Region: {region}<br/>Risk: {risk_score}<br/>Exposure: {exposure_usd}",
             "style": {"backgroundColor": "steelblue", "color": "white", "padding": "6px"},
         },
-        map_style="mapbox://styles/mapbox/light-v11",
+        map_style="light",
+        map_provider="carto",
     )
     st.pydeck_chart(r, width="stretch")
 
