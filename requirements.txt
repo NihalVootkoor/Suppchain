@@ -6,4 +6,3 @@ pydantic
 groq
 plotly
 streamlit-aggrid
-pydeck

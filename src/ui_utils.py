@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "inject_full_width_css",
+    "load_events",
+    "filter_events",
+    "render_sidebar",
+    "render_debug_panel",
+    "render_groq_status",
+    "render_events_table",
+]
+
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, List, Tuple
@@ -9,7 +19,6 @@ from typing import Iterable, List, Tuple
 import pandas as pd
 import streamlit as st
 
-from src.backfill import run_seed_backfill
 from src.config import get_config
 from src.date_utils import parse_datetime
 from src.debug import get_debug_data
@@ -199,6 +208,7 @@ def render_debug_panel(db_path: Path) -> None:
     st.sidebar.subheader("Admin actions")
     if st.sidebar.button("Import Seeds (Backfill)"):
         try:
+            from src.backfill import run_seed_backfill
             stats = run_seed_backfill(str(seeds_path))
             st.cache_data.clear()
             st.sidebar.success("Seed backfill complete.")
