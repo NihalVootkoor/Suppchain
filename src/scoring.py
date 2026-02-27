@@ -9,14 +9,17 @@ from src.models import EnrichedEvent, LLMExtraction, RawArticle
 
 
 def compute_risk_score(extraction: LLMExtraction) -> float:
-    """Compute a 0-100 risk score from severity signals."""
+    """Compute a 0-100 risk score from severity signals.
 
-    impact = extraction.impact_1to5 * 15
-    probability = extraction.probability_1to5 * 12
-    time_sensitive = extraction.time_sensitivity_1to3 * 10
-    exposure = extraction.exposure_proxy_1to5 * 10
-    score = impact + probability + time_sensitive + exposure
-    return max(0.0, min(100.0, round(score, 2)))
+    Weights: impact 40%, probability 30%, time_sensitivity 15%, exposure 15%.
+    Each factor is normalized to its max so the sum is always in [0, 100].
+    """
+    impact_score   = (extraction.impact_1to5 / 5) * 40
+    prob_score     = (extraction.probability_1to5 / 5) * 30
+    time_score     = (extraction.time_sensitivity_1to3 / 3) * 15
+    exposure_score = (extraction.exposure_proxy_1to5 / 5) * 15
+    score = impact_score + prob_score + time_score + exposure_score
+    return round(max(0.0, min(100.0, score)), 2)
 
 
 def severity_band(score: float) -> str:

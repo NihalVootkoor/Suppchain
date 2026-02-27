@@ -113,7 +113,8 @@ def _classify_pestel(disruption_type: str) -> str:
 
 def _severity_signals(text: str, disruption_type: str) -> Dict[str, Any]:
     t = _norm(text)
-    impact = 3
+
+    # Impact: severity of the production/supply effect
     if any(k in t for k in ["force majeure", "halted production", "production halted", "plant shutdown", "shutdown"]):
         impact = 5
     elif any(k in t for k in ["output cut", "capacity reduced", "major delays", "stoppage"]):
@@ -123,29 +124,39 @@ def _severity_signals(text: str, disruption_type: str) -> Dict[str, Any]:
     else:
         impact = 2
 
-    probability = 3
-    if any(k in t for k in ["confirmed", "announced", "began", "started", "is underway", "has been"]):
+    # Probability: confidence the disruption is real and happening.
+    # Start at 2 (reported); escalate only with firm confirmation language.
+    probability = 2
+    if any(k in t for k in ["confirmed", "announced", "began", "started", "is underway", "has been", "officially"]):
+        probability = 3
+    if any(k in t for k in ["production halted", "plant shutdown", "shutdown", "force majeure", "halted"]):
         probability = 4
-    if any(k in t for k in ["effective immediately", "in effect", "has taken effect"]):
+    if any(k in t for k in ["effective immediately", "in effect", "has taken effect", "completely halted"]):
         probability = 5
-    if any(k in t for k in ["could", "may", "might", "reportedly", "rumor"]):
-        probability = max(2, probability - 1)
+    if any(k in t for k in ["could", "may", "might", "reportedly", "rumor", "possible", "potential"]):
+        probability = max(1, probability - 1)
 
-    time_sens = 2
-    if any(k in t for k in ["immediately", "now", "today", "this week", "halted", "shutdown", "outage"]):
-        time_sens = 3
+    # Time sensitivity: urgency of the impact window.
+    # Use disruption type as a baseline; only escalate to 3 with explicit urgency signals.
     if disruption_type in ["Export Restriction", "Regulatory Change"]:
+        # Policy changes are slow-moving by nature
         time_sens = 1
-    if disruption_type in [
-        "Cyberattack",
-        "Labor Strike",
-        "Port Congestion",
-        "Plant Shutdown",
-        "Natural Disaster",
-    ]:
-        time_sens = 3
+        if any(k in t for k in ["effective immediately", "in effect", "has taken effect"]):
+            time_sens = 2
+    elif disruption_type == "Supplier Insolvency":
+        time_sens = 2
+    elif disruption_type in ["Cyberattack", "Natural Disaster", "Labor Strike", "Plant Shutdown", "Port Congestion"]:
+        # These can be urgent, but only if confirmed as active/immediate
+        time_sens = 2
+        if any(k in t for k in ["immediately", "now", "today", "this week", "ongoing", "active", "outage", "halted", "in effect"]):
+            time_sens = 3
+    else:
+        # "Other" — conservative default
+        time_sens = 1
+        if any(k in t for k in ["immediately", "now", "today", "this week", "halted", "outage"]):
+            time_sens = 2
 
-    exposure_proxy = 3
+    # Exposure: concentration/criticality of supply dependency
     if any(k in t for k in ["single-source", "sole supplier", "only supplier", "exclusive"]):
         exposure_proxy = 5
     elif any(k in t for k in ["key supplier", "critical supplier", "major supplier", "primary supplier"]):

@@ -27,7 +27,7 @@ from src.storage import DbPaths, fetch_enriched_events, get_meta_value, init_db,
 from src.storage_utils import row_to_dict
 
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def load_events(db_path: Path) -> list[dict[str, object]]:
     """Load enriched events for display."""
 
