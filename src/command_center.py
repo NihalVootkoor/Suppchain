@@ -1,4 +1,5 @@
-"""Command Center page."""
+"""Command Center view logic (shared by main app and sidebar page)."""
+
 from __future__ import annotations
 
 import streamlit as st
@@ -6,7 +7,6 @@ import streamlit as st
 from src.aggregation import compute_kpis
 from src.config import get_config
 from src.ui_utils import (
-    inject_full_width_css,
     load_events,
     render_debug_panel,
     render_events_table,
@@ -15,9 +15,8 @@ from src.ui_utils import (
 )
 
 
-def main() -> None:
-    """Render the Command Center page."""
-    inject_full_width_css()
+def render_command_center() -> None:
+    """Render the Command Center page (KPIs, top events, table)."""
     config = get_config()
     st.info(f"**Database:** {'Supabase' if config.db_url else 'Local (SQLite)'}")
     render_groq_status()
@@ -48,7 +47,10 @@ def main() -> None:
         reverse=True,
     )[:3]
     st.subheader("Top 3 Current High-Risk Events")
-    st.caption("Ranked by risk score, estimated exposure, and recency. Mitigation is personalized when Groq LLM is configured.")
+    st.caption(
+        "Ranked by risk score, estimated exposure, and recency. "
+        "Mitigation is personalized when Groq LLM is configured."
+    )
     for event in top_events:
         st.markdown(f"### [{event['title']}]({event['article_url']})")
         st.write(event["event_summary"])
@@ -64,9 +66,8 @@ def main() -> None:
         if event.get("mitigation_description"):
             st.caption(event["mitigation_description"])
     st.subheader("All Events")
-    st.caption("Sort, filter, and paginate. AG Grid when available; otherwise Streamlit native table.")
+    st.caption(
+        "Sort, filter, and paginate. AG Grid when available; "
+        "otherwise Streamlit native table."
+    )
     render_events_table(filtered, use_aggrid=True, height=420, selection_mode="single")
-
-
-if __name__ == "__main__":
-    main()

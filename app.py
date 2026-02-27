@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 st.set_page_config(
-    page_title="Auto Supply Chain Risk Monitor",
+    page_title="Command Center",
     layout="wide",
 )
 
@@ -15,19 +15,13 @@ try:
 except Exception:
     pass
 
-try:
-    from src.config import get_config
-    from src.ui_utils import render_groq_status
+from src.command_center import render_command_center
 
-    config = get_config()
-    db_label = "Supabase" if config.db_url else "Local (SQLite)"
-    st.info(f"**Database:** {db_label}")
-    render_groq_status()
-except Exception as e:
-    st.warning(f"Config/status: {e}")
-
-st.title("Automotive Supply Chain Risk Monitor")
-st.markdown(
-    "Use the navigation sidebar to explore Command Center, Risk Radar, "
-    "Trends, and Mitigation Explorer."
-)
+# Single nav: Command Center + other pages (no duplicate "app" list)
+nav = st.navigation([
+    st.Page(render_command_center, title="Command Center", default=True),
+    st.Page("pages/2_Risk_Radar.py", title="Risk Radar"),
+    st.Page("pages/3_Trends.py", title="Trends"),
+    st.Page("pages/4_Mitigation_Explorer.py", title="Mitigation Explorer"),
+])
+nav.run()
