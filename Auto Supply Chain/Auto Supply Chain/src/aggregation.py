@@ -70,3 +70,11 @@ def category_breakdown(rows: list[dict[str, object]]) -> dict[str, int]:
     return counts
 
 
+def region_breakdown(rows: list[dict[str, object]]) -> dict[str, int]:
+    """Count events by geo region."""
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        region = str(row["geo_region"])
+        counts[region] = counts.get(region, 0) + 1
+    return counts

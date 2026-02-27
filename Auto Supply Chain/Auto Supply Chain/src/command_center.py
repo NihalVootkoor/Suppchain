@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html as _html
 import json
 
 import pandas as pd
@@ -372,102 +371,93 @@ def _render_world_risk_map(events: list[dict]) -> None:
 
 # ── Top risk event cards with mitigation ─────────────────────────────────────
 def _render_top_event_card(rank: int, event: dict, config) -> None:
-    """Render a unified card: event metadata + brief summary + AI mitigation."""
-    # ── Data extraction ────────────────────────────────────────────────────────
     severity_band = str(event.get("severity_band") or "Medium")
     sev_color = _SEVERITY_COLORS.get(severity_band, "#888")
-    sev_bg = _SEVERITY_BG.get(severity_band, "#f8fafc")
+    sev_bg = _SEVERITY_BG.get(severity_band, "#fafafa")
     score = float(event.get("risk_score_0to100") or 0)
-    title = _html.escape(str(event.get("title") or "Untitled Event"))
+    title = str(event.get("title") or "Untitled Event")
     url = str(event.get("article_url") or "#")
-    disruption = str(event.get("disruption_type") or "Unknown Type")
+    summary = str(event.get("event_summary") or "")
+    reason = str(event.get("reason_flagged") or "")
+    disruption = str(event.get("disruption_type") or "")
     country = str(event.get("geo_country") or "")
     region = str(event.get("geo_region") or "")
-    delay_days = int(event.get("estimated_delay_days") or 0)
-    published_at = str(event.get("published_at") or "")
+    blurb = str(event.get("dashboard_blurb") or "")
 
-    # Date
-    try:
-        date_str = pd.to_datetime(published_at).strftime("%b %d, %Y")
-    except Exception:
-        date_str = published_at[:10] if published_at else "—"
+    reason_html = (
+        f"<div style='font-size:0.81rem;color:#777;font-style:italic;margin-top:8px;'>"
+        f"Flagged: {reason}</div>"
+        if reason else ""
+    )
+    blurb_html = (
+        f"<div style='font-size:0.81rem;color:#555;margin-top:6px;'>"
+        f"<b>Risks identified:</b> {blurb}</div>"
+        if blurb else ""
+    )
+    location_line = " · ".join(filter(None, [country, region, disruption]))
 
-    # Location — drop "Unknown" tokens
-    loc_parts = [p for p in [country, region] if p and p.lower() not in ("unknown", "")]
-    location_str = ", ".join(loc_parts) if loc_parts else "Location TBD"
+    st.markdown(
+        f"""<div style="border:1.5px solid {sev_color};border-radius:12px;
+  padding:22px 26px 16px;background:{sev_bg};
+  box-shadow:0 3px 12px rgba(0,0,0,0.07);margin-bottom:6px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;
+    gap:14px;margin-bottom:10px;">
+    <div style="font-size:0.98rem;font-weight:700;color:#1a1a2e;line-height:1.45;flex:1;">
+      <span style="background:{_KPI_CARD_BG};color:#94a3b8;font-size:0.68rem;font-weight:700;
+        padding:2px 9px;border-radius:20px;margin-right:8px;vertical-align:middle;">#{rank}</span>
+      <a href="{url}" target="_blank" style="color:#1e3a6e;text-decoration:none;
+        font-weight:700;">{title}</a>
+    </div>
+    <div style="display:flex;gap:7px;align-items:center;flex-shrink:0;">
+      <span style="background:{sev_color};color:#fff;font-size:0.65rem;font-weight:800;
+        padding:3px 10px;border-radius:20px;letter-spacing:0.05em;">{severity_band.upper()}</span>
+      <span style="background:{_KPI_CARD_BG};color:#f0c040;font-size:0.68rem;font-weight:800;
+        padding:3px 10px;border-radius:20px;">RISK {score:.0f} / 100</span>
+    </div>
+  </div>
+  <div style="font-size:0.78rem;color:#888;margin-bottom:10px;">{location_line}</div>
+  <div style="font-size:0.9rem;color:#333;line-height:1.65;">{summary}</div>
+  {reason_html}{blurb_html}
+</div>""",
+        unsafe_allow_html=True,
+    )
 
-    # Duration label
-    duration_str = f"~{delay_days} days est. delay" if delay_days else "Unknown duration"
-
-    # ── Compute mitigation first (before building HTML) ───────────────────────
+    # Mitigation panel
     mit_desc, mit_actions, used_groq = _get_mitigation(event, config)
-    source_label = "AI-Powered Mitigation" if used_groq else "Playbook Mitigation"
+    source_label = "AI-Powered" if used_groq else "Playbook"
 
-    # ── Mitigation actions HTML ────────────────────────────────────────────────
     action_html = ""
     for i, action in enumerate(mit_actions[:3]):
         label = _ACTION_LABELS[i] if i < len(_ACTION_LABELS) else f"Action {i + 1}"
         color = _ACTION_COLORS[i] if i < len(_ACTION_COLORS) else "#888"
         action_html += (
-            f"<div style='border-left:3px solid {color};"
-            f"background:rgba(255,255,255,0.04);border-radius:0 6px 6px 0;"
-            f"padding:10px 14px;margin-bottom:8px;'>"
-            f"<div style='font-size:0.68rem;font-weight:800;color:{color};"
-            f"text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;'>{label}</div>"
-            f"<div style='font-size:0.85rem;color:#e2e8f0;line-height:1.6;'>{_html.escape(str(action))}</div>"
-            f"</div>"
+            f"<div style='border-left:3px solid {color};background:rgba(255,255,255,0.06);"
+            f"border-radius:5px;padding:10px 14px;margin-bottom:8px;color:#e2e8f0;"
+            f"font-size:0.86rem;line-height:1.6;'>"
+            f"<span style='font-weight:700;color:{color};'>{label}:&nbsp;</span>"
+            f"{action}</div>"
         )
 
     desc_html = (
-        f"<div style='color:#ffffff;font-size:0.85rem;font-weight:700;margin-bottom:12px;"
-        f"line-height:1.6;'>{_html.escape(str(mit_desc))}</div>"
+        f"<div style='color:#94a3b8;font-size:0.81rem;margin-bottom:13px;"
+        f"font-style:italic;'>{mit_desc}</div>"
         if mit_desc else ""
     )
 
-    # Escape remaining chip strings
-    _loc  = _html.escape(location_str)
-    _disr = _html.escape(disruption)
-    _dur  = _html.escape(duration_str)
-    _date = _html.escape(date_str)
-    _sev  = _html.escape(severity_band.upper())
-
-    # ── Single unified card HTML ───────────────────────────────────────────────
-    # Use st.html() to render raw HTML directly — avoids Streamlit's markdown
-    # pre-processor treating deeply-indented lines as code blocks.
-    st.html(
-        f'<div style="border:1.5px solid #3f4450;border-radius:14px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.18);margin-bottom:26px;">'
-        f'<div style="background:#0E1117;padding:22px 26px 20px;">'
-        f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;">'
-        f'<div style="flex:1;min-width:0;">'
-        f'<span style="background:rgba(255,255,255,0.08);color:#94a3b8;font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:9px;vertical-align:middle;">#{rank}</span>'
-        f'<a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
-        f'</div>'
-        f'<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">'
-        f'<span style="background:{sev_color};color:#fff;font-size:0.63rem;font-weight:800;padding:4px 11px;border-radius:4px;letter-spacing:0.07em;white-space:nowrap;">{_sev}</span>'
-        f'<span style="background:rgba(239,68,68,0.18);color:#f87171;font-size:0.65rem;font-weight:800;padding:4px 11px;border-radius:4px;white-space:nowrap;">RISK {score:.0f}/100</span>'
-        f'</div>'
-        f'</div>'
-        f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;font-size:0.72rem;font-weight:500;color:#ffffff;">'
-        f'<span>{_date}</span>'
-        f'<span style="margin:0 8px;color:rgba(255,255,255,0.3);">&middot;</span>'
-        f'<span>{_loc}</span>'
-        f'<span style="margin:0 8px;color:rgba(255,255,255,0.3);">&middot;</span>'
-        f'<span>{_disr}</span>'
-        f'<span style="margin:0 8px;color:rgba(255,255,255,0.3);">&middot;</span>'
-        f'<span>{_dur}</span>'
-        f'</div>'
-        f'</div>'
-        f'<div style="background:#0E1117;padding:18px 24px 16px;border-top:1.5px solid #3f4450;">'
-        f'<div style="font-size:0.64rem;color:#ffffff;text-transform:uppercase;letter-spacing:0.11em;font-weight:700;margin-bottom:11px;">{source_label}</div>'
-        f'{desc_html}{action_html}'
-        f'</div>'
-        f'</div>'
+    st.markdown(
+        f"""<div style="background:{_KPI_CARD_BG};border-top:3px solid {_KPI_ACCENT};
+  border-radius:10px;padding:18px 22px 14px;margin-bottom:28px;">
+  <div style="font-size:0.68rem;color:{_KPI_LABEL_COLOR};text-transform:uppercase;
+    letter-spacing:0.1em;font-weight:700;margin-bottom:10px;">{source_label} Mitigation</div>
+  {desc_html}{action_html}
+</div>""",
+        unsafe_allow_html=True,
     )
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 def render_command_center() -> None:
-    """Render the Command Center — KPIs, charts, and world map."""
+    """Render the Command Center — tabbed: Overview | Top Risk Events."""
     config = get_config()
     st.title("Command Center")
     events = load_events(config.db_path)
@@ -479,22 +469,49 @@ def render_command_center() -> None:
         return
 
     kpis = compute_kpis(filtered)
-    _render_kpi_cards(kpis)
 
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    tab_overview, tab_events = st.tabs(["Overview", "Top Risk Events"])
 
-    # Side-by-side: Severity Trend | PESTEL Breakdown
-    col_l, col_r = st.columns([3, 2])
-    with col_l:
-        st.markdown("**Risk Severity Over Time**")
-        st.caption("Average daily risk score across all active events.")
-        _render_severity_trend(filtered)
-    with col_r:
-        st.markdown("**PESTEL Category Breakdown**")
-        st.caption("Event count by PESTEL risk category.")
-        _render_pestel_chart(filtered)
+    # ── Tab 1: Overview ───────────────────────────────────────────────────────
+    with tab_overview:
+        _render_kpi_cards(kpis)
 
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    st.markdown("**World Risk Map**")
-    st.caption("Geographic distribution of active risk events. Bubble size and color indicate risk score.")
-    _render_world_risk_map(filtered)
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+        # Side-by-side: Severity Trend | PESTEL Breakdown
+        col_l, col_r = st.columns([3, 2])
+        with col_l:
+            st.markdown("**Risk Severity Over Time**")
+            st.caption("Average daily risk score across all active events.")
+            _render_severity_trend(filtered)
+        with col_r:
+            st.markdown("**PESTEL Category Breakdown**")
+            st.caption("Event count by PESTEL risk category.")
+            _render_pestel_chart(filtered)
+
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        st.markdown("**World Risk Map**")
+        st.caption("Geographic distribution of active risk events. Bubble size and color indicate risk score.")
+        _render_world_risk_map(filtered)
+
+    # ── Tab 2: Top Risk Events & Mitigation ───────────────────────────────────
+    with tab_events:
+        top_events = sorted(
+            filtered,
+            key=lambda item: (
+                float(item["risk_score_0to100"]),
+                float(item["exposure_usd_est"]),
+                str(item["published_at"]),
+            ),
+            reverse=True,
+        )[:3]
+
+        st.subheader("Top 3 Current High-Risk Events")
+        st.caption(
+            "Ranked by risk score, estimated exposure, and recency. "
+            "Mitigation is AI-powered via Groq LLM when configured, "
+            "otherwise a deterministic playbook is applied."
+        )
+
+        for rank, event in enumerate(top_events, 1):
+            _render_top_event_card(rank, event, config)

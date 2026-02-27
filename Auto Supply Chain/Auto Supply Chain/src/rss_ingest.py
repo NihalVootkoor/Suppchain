@@ -1,5 +1,4 @@
 """RSS ingestion and pipeline orchestration."""
-
 from __future__ import annotations
 
 import csv
@@ -78,15 +77,6 @@ def _extract_atom_link(entry: ET.Element) -> str:
     return ""
 
 
-def _clean_content(text: str) -> str:
-    """Strip content that is just an HTML redirect link (e.g. Google News feeds)."""
-    stripped = text.strip()
-    # Google News and similar aggregators emit '<a href="...">' with no real text
-    if re.match(r"^<a\s+href=", stripped, re.IGNORECASE):
-        return ""
-    return stripped
-
-
 def parse_rss(xml_text: str, source: str, weight: float) -> list[RawArticle]:
     """Parse RSS or Atom XML into RawArticle entries."""
 
@@ -101,13 +91,13 @@ def parse_rss(xml_text: str, source: str, weight: float) -> list[RawArticle]:
     for item in items:
         title = _find_text(item, ["title"]) or "Untitled"
         link = _find_text(item, ["link", "guid"])
-        summary = _clean_content(_find_text(
+        summary = _find_text(
             item,
             [
                 "description",
                 "{http://purl.org/rss/1.0/modules/content/}encoded",
             ],
-        ))
+        )
         published_at = parse_datetime(item.findtext("pubDate"))
         canonical = canonicalize_url(link or title)
         articles.append(
@@ -131,13 +121,13 @@ def parse_rss(xml_text: str, source: str, weight: float) -> list[RawArticle]:
     for entry in entries:
         title = _find_text(entry, ["{http://www.w3.org/2005/Atom}title"]) or "Untitled"
         link = _extract_atom_link(entry)
-        summary = _clean_content(_find_text(
+        summary = _find_text(
             entry,
             [
                 "{http://www.w3.org/2005/Atom}summary",
                 "{http://www.w3.org/2005/Atom}content",
             ],
-        ))
+        )
         published_at = parse_datetime(
             _find_text(
                 entry,
@@ -228,8 +218,6 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
     paths = DbPaths(config.db_path, config.db_url)
     init_db(paths)
     articles = ingest_rss(config.rss_urls, config.source_weights)
-    seed_path = config.project_root / "data" / "seeds.csv"
-    articles.extend(_load_seed_articles(seed_path))
     articles = _dedupe_articles(articles)
     upsert_raw_articles(paths, [raw_to_row(article) for article in articles])
     kept, rejected = filter_articles(articles)

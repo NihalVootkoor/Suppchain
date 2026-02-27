@@ -5,11 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from src.config import (
-    DISRUPTION_TRIGGERS as _CONFIG_TRIGGERS,
-    NEGATIVE_KEYWORDS as _CONFIG_NEGATIVES,
-    OEMS,
-)
+from src.config import DISRUPTION_TRIGGERS, NEGATIVE_KEYWORDS, OEMS
 from src.models import RawArticle
 
 
@@ -21,7 +17,7 @@ class FilterResult:
     reason: Optional[str]
 
 
-AUTOMOTIVE_ANCHORS: tuple[str, ...] = tuple(
+AUTOMOTIVE_ANCHORS = tuple(
     sorted(
         {
             "automotive",
@@ -34,23 +30,12 @@ AUTOMOTIVE_ANCHORS: tuple[str, ...] = tuple(
             "ev",
             "electric vehicle",
             "oem",
-            # Supply chain / logistics terms — these feeds are inherently supply-chain focused
-            "supply chain",
-            "semiconductor",
-            "chip",
-            "logistics",
-            "shipping",
-            "freight",
-            "truck",
-            "trucker",
-            "trucking",
-            "fleet",
             *[oem.lower() for oem in OEMS],
         }
     )
 )
-_DISRUPTION_TRIGGERS: tuple[str, ...] = tuple(t.lower() for t in _CONFIG_TRIGGERS)
-_NEGATIVE_KEYWORDS: tuple[str, ...] = tuple(k.lower() for k in _CONFIG_NEGATIVES)
+DISRUPTION_TRIGGERS = tuple(trigger.lower() for trigger in DISRUPTION_TRIGGERS)
+NEGATIVE_KEYWORDS = tuple(keyword.lower() for keyword in NEGATIVE_KEYWORDS)
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -63,11 +48,11 @@ def hard_filter(article: RawArticle) -> FilterResult:
     """Apply hard filter: automotive anchor + disruption trigger, no negatives."""
 
     text = f"{article.title} {article.summary} {article.content}".lower()
-    if _contains_any(text, _NEGATIVE_KEYWORDS):
+    if _contains_any(text, NEGATIVE_KEYWORDS):
         return FilterResult(False, "Negative keyword match.")
     if not _contains_any(text, AUTOMOTIVE_ANCHORS):
         return FilterResult(False, "Missing automotive anchor.")
-    if not _contains_any(text, _DISRUPTION_TRIGGERS):
+    if not _contains_any(text, DISRUPTION_TRIGGERS):
         return FilterResult(False, "Missing disruption trigger.")
     return FilterResult(True, None)
 

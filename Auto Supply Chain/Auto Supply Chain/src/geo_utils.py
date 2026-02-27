@@ -54,25 +54,6 @@ COUNTRY_COORDINATES: dict[str, Tuple[float, float]] = {
     "Hungary": (47.1625, 19.5033),
     "Romania": (45.9432, 24.9668),
     "Slovakia": (48.6690, 19.6990),
-    "Sweden": (60.1282, 18.6435),
-    "Belgium": (50.5039, 4.4699),
-    "Austria": (47.5162, 14.5501),
-    "Switzerland": (46.8182, 8.2275),
-    "Portugal": (39.3999, -8.2245),
-    "Korea": (35.9078, 127.7669),
-    "Pakistan": (30.3753, 69.3451),
-    "Bangladesh": (23.6850, 90.3563),
-    "Philippines": (12.8797, 121.7740),
-    "Singapore": (1.3521, 103.8198),
-    "Australia": (-25.2744, 133.7751),
-    "Israel": (31.0461, 34.8516),
-    "Iran": (32.4279, 53.6880),
-    "Iraq": (33.2232, 43.6793),
-    "Nigeria": (9.0820, 8.6753),
-    "Kenya": (-0.0236, 37.9062),
-    "Ethiopia": (9.1450, 40.4897),
-    "Colombia": (4.5709, -74.2973),
-    "Ukraine": (48.3794, 31.1656),
     "Unknown": (0.0, 0.0),
 }
 
@@ -81,6 +62,6 @@ def get_event_coordinates(event: dict) -> Tuple[float, float]:
     """Return (lat, lon) for an event using country first, then region."""
     country = str(event.get("geo_country") or "").strip()
     region = str(event.get("geo_region") or "Unknown").strip()
-    if country and country not in ("Unknown", "") and country in COUNTRY_COORDINATES:
+    if country and country in COUNTRY_COORDINATES:
         return COUNTRY_COORDINATES[country]
     return REGION_COORDINATES.get(region, REGION_COORDINATES["Unknown"])

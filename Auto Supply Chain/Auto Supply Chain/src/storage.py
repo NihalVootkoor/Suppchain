@@ -1,12 +1,11 @@
 """Storage helpers and migrations for SQLite/Postgres."""
-
 from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 try:  # Optional dependency for Supabase/Postgres
     import psycopg2  # type: ignore
@@ -73,7 +72,7 @@ def get_sqlite_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def get_pg_connection(db_url: str) -> Any:
+def get_pg_connection(db_url: str):
     """Create a Postgres connection."""
 
     _require_postgres()

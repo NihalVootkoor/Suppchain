@@ -1,9 +1,7 @@
 """App configuration."""
-
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -39,107 +37,21 @@ GEO_REGIONS = (
     "Unknown",
 )
 COUNTRY_MAP = {
-    # North America
-    "united states": ("United States", "North America"),
-    "u.s.": ("United States", "North America"),
-    "usa": ("United States", "North America"),
-    "u.s.a.": ("United States", "North America"),
-    "american": ("United States", "North America"),
-    "trump": ("United States", "North America"),
-    "scotus": ("United States", "North America"),
-    "white house": ("United States", "North America"),
-    "canada": ("Canada", "North America"),
-    "canadian": ("Canada", "North America"),
-    "mexico": ("Mexico", "North America"),
-    "mexican": ("Mexico", "North America"),
-    # Europe
+    "china": ("China", "East Asia"),
+    "japan": ("Japan", "East Asia"),
+    "korea": ("Korea", "East Asia"),
+    "south korea": ("South Korea", "East Asia"),
+    "india": ("India", "South Asia"),
     "germany": ("Germany", "Europe"),
-    "german": ("Germany", "Europe"),
     "france": ("France", "Europe"),
-    "french": ("France", "Europe"),
     "uk": ("United Kingdom", "Europe"),
     "united kingdom": ("United Kingdom", "Europe"),
-    "britain": ("United Kingdom", "Europe"),
-    "british": ("United Kingdom", "Europe"),
-    "england": ("United Kingdom", "Europe"),
-    "italy": ("Italy", "Europe"),
-    "italian": ("Italy", "Europe"),
-    "spain": ("Spain", "Europe"),
-    "spanish": ("Spain", "Europe"),
-    "netherlands": ("Netherlands", "Europe"),
-    "dutch": ("Netherlands", "Europe"),
-    "poland": ("Poland", "Europe"),
-    "polish": ("Poland", "Europe"),
-    "czech republic": ("Czech Republic", "Europe"),
-    "czechia": ("Czech Republic", "Europe"),
-    "hungary": ("Hungary", "Europe"),
-    "hungarian": ("Hungary", "Europe"),
-    "romania": ("Romania", "Europe"),
-    "slovakia": ("Slovakia", "Europe"),
-    "sweden": ("Sweden", "Europe"),
-    "swedish": ("Sweden", "Europe"),
-    "belgium": ("Belgium", "Europe"),
-    "austria": ("Austria", "Europe"),
-    "switzerland": ("Switzerland", "Europe"),
-    "portugal": ("Portugal", "Europe"),
-    "turkey": ("Turkey", "Middle East"),
-    "turkish": ("Turkey", "Middle East"),
-    # East Asia
-    "china": ("China", "East Asia"),
-    "chinese": ("China", "East Asia"),
-    "japan": ("Japan", "East Asia"),
-    "japanese": ("Japan", "East Asia"),
-    "south korea": ("South Korea", "East Asia"),
-    "korea": ("South Korea", "East Asia"),
-    "korean": ("South Korea", "East Asia"),
-    "taiwan": ("Taiwan", "East Asia"),
-    "taiwanese": ("Taiwan", "East Asia"),
-    # South Asia
-    "india": ("India", "South Asia"),
-    "indian": ("India", "South Asia"),
-    "pakistan": ("Pakistan", "South Asia"),
-    "bangladesh": ("Bangladesh", "South Asia"),
-    # Southeast Asia
-    "thailand": ("Thailand", "Southeast Asia"),
-    "thai": ("Thailand", "Southeast Asia"),
-    "vietnam": ("Vietnam", "Southeast Asia"),
-    "vietnamese": ("Vietnam", "Southeast Asia"),
-    "indonesia": ("Indonesia", "Southeast Asia"),
-    "indonesian": ("Indonesia", "Southeast Asia"),
-    "malaysia": ("Malaysia", "Southeast Asia"),
-    "malaysian": ("Malaysia", "Southeast Asia"),
-    "philippines": ("Philippines", "Southeast Asia"),
-    "filipino": ("Philippines", "Southeast Asia"),
-    "singapore": ("Singapore", "Southeast Asia"),
-    # Middle East
-    "saudi arabia": ("Saudi Arabia", "Middle East"),
-    "saudi": ("Saudi Arabia", "Middle East"),
-    "uae": ("United Arab Emirates", "Middle East"),
-    "united arab emirates": ("United Arab Emirates", "Middle East"),
-    "israel": ("Israel", "Middle East"),
-    "iran": ("Iran", "Middle East"),
-    "iraqi": ("Iraq", "Middle East"),
-    "iraq": ("Iraq", "Middle East"),
-    # Latin America
+    "mexico": ("Mexico", "North America"),
+    "canada": ("Canada", "North America"),
+    "united states": ("United States", "North America"),
+    "u.s.": ("United States", "North America"),
     "brazil": ("Brazil", "Latin America"),
-    "brazilian": ("Brazil", "Latin America"),
-    "argentina": ("Argentina", "Latin America"),
-    "chile": ("Chile", "Latin America"),
-    "colombia": ("Colombia", "Latin America"),
-    # Africa
-    "south africa": ("South Africa", "Africa"),
-    "nigeria": ("Nigeria", "Africa"),
-    "kenya": ("Kenya", "Africa"),
-    "egypt": ("Egypt", "Africa"),
-    "ethiopia": ("Ethiopia", "Africa"),
-    # Russia / CIS
-    "russia": ("Russia", "Europe"),
-    "russian": ("Russia", "Europe"),
-    "ukraine": ("Ukraine", "Europe"),
-    "ukrainian": ("Ukraine", "Europe"),
-    # Oceania (map to nearest region)
-    "australia": ("Australia", "Southeast Asia"),
-    "australian": ("Australia", "Southeast Asia"),
+    "africa": ("Africa", "Africa"),
 }
 OEMS = [
     "Tesla",
@@ -182,44 +94,22 @@ AUTO_TERMS = [
 DISRUPTION_TRIGGERS = [
     "strike",
     "shutdown",
-    "shut down",
     "closure",
-    "halt",
-    "halted",
-    "stoppage",
-    "shortage",
-    "disruption",
     "port",
     "congestion",
-    "delay",
     "export restriction",
     "export ban",
     "sanctions",
     "tariff",
     "cyberattack",
     "ransomware",
-    "hack",
-    "outage",
     "hurricane",
     "earthquake",
     "flood",
     "fire",
-    "typhoon",
-    "storm",
     "insolvency",
     "bankruptcy",
     "regulatory",
-    "recall",
-    # Capacity / restructuring signals
-    "restructur",
-    "job cut",
-    "layoff",
-    "production cut",
-    "capacity cut",
-    "plant clos",
-    "warn",
-    "risk",
-    "impact",
 ]
 NEGATIVE_KEYWORDS = [
     "review",
@@ -261,6 +151,7 @@ def _get_groq_api_key() -> Optional[str]:
         secrets_file = root / ".streamlit" / "secrets.toml"
         if secrets_file.is_file():
             text = secrets_file.read_text(encoding="utf-8")
+            import re
             m = re.search(r'GROQ_API_KEY\s*=\s*["\']([^"\']+)["\']', text)
             if m and m.group(1).strip():
                 return m.group(1).strip()
@@ -272,18 +163,7 @@ def _get_groq_api_key() -> Optional[str]:
 class AppConfig:
     """Configuration for the application."""
 
-    __slots__ = (
-        "project_root",
-        "db_path",
-        "db_url",
-        "rss_urls",
-        "retention_days",
-        "enriched_retention_days",
-        "source_weights",
-        "groq_api_key",
-        "groq_model",
-        "refresh_interval_hours",
-    )
+    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights", "groq_api_key", "groq_model")
 
     def __init__(
         self,
@@ -296,7 +176,6 @@ class AppConfig:
         source_weights: dict[str, float],
         groq_api_key: Optional[str] = None,
         groq_model: str = "llama-3.1-8b-instant",
-        refresh_interval_hours: int = 24,
     ) -> None:
         object.__setattr__(self, "project_root", project_root)
         object.__setattr__(self, "db_path", db_path)
@@ -307,11 +186,6 @@ class AppConfig:
         object.__setattr__(self, "source_weights", source_weights)
         object.__setattr__(self, "groq_api_key", groq_api_key or _get_groq_api_key())
         object.__setattr__(self, "groq_model", os.environ.get("GROQ_MODEL") or groq_model)
-        object.__setattr__(
-            self,
-            "refresh_interval_hours",
-            int(os.environ.get("REFRESH_INTERVAL_HOURS") or refresh_interval_hours),
-        )
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("AppConfig is immutable")
@@ -335,20 +209,19 @@ def get_config(project_root: Optional[Path] = None) -> AppConfig:
         groq_api_key=None,
         groq_model="llama-3.1-8b-instant",
         rss_urls=(
-            # Direct industry sources with full article bodies (replacing Google News redirect feeds)
-            "https://www.supplychaindive.com/feeds/news/",
-            "https://www.dcvelocity.com/rss",
-            "https://www.globaltrademag.com/feed/",
+            "https://news.google.com/rss/search?q=automotive%20supply%20chain%20disruption&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=auto%20plant%20shutdown%20strike&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=automotive%20semiconductor%20shortage&hl=en-US&gl=US&ceid=US:en",
             "https://www.automotiveworld.com/feed/",
             "https://www.just-auto.com/feed/",
             "https://www.freightwaves.com/feed",
         ),
         retention_days=45,
-        enriched_retention_days=730,
+        enriched_retention_days=365,
         source_weights={
-            "https://www.supplychaindive.com/feeds/news/": 0.8,
-            "https://www.dcvelocity.com/rss": 0.7,
-            "https://www.globaltrademag.com/feed/": 0.7,
+            "https://news.google.com/rss/search?q=automotive%20supply%20chain%20disruption&hl=en-US&gl=US&ceid=US:en": 0.7,
+            "https://news.google.com/rss/search?q=auto%20plant%20shutdown%20strike&hl=en-US&gl=US&ceid=US:en": 0.7,
+            "https://news.google.com/rss/search?q=automotive%20semiconductor%20shortage&hl=en-US&gl=US&ceid=US:en": 0.7,
             "https://www.automotiveworld.com/feed/": 0.75,
             "https://www.just-auto.com/feed/": 0.7,
             "https://www.freightwaves.com/feed": 0.6,

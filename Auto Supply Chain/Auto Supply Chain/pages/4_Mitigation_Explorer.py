@@ -26,7 +26,7 @@ def main() -> None:
         st.info("No events available. Use Refresh data to ingest RSS feeds.")
         return
     st.caption("Professional event table: sort, filter, paginate, row selection. AG Grid when available.")
-    render_events_table(filtered, use_aggrid=True, height=620, selection_mode="multiple")
+    render_events_table(filtered, use_aggrid=True, height=500, selection_mode="multiple")
 
 
 if __name__ == "__main__":
