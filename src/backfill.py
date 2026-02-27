@@ -23,17 +23,13 @@ from src.storage import (
 from src.filters import hard_filter
 from src.models import RawArticle
 
-# IMPORTANT:
-# This assumes you already have a pipeline function that can take raw rows and write enriched events.
-# If your pipeline function has a different name/signature, adjust enrich_from_raw_rows() accordingly.
-
 
 def _parse_dt(value: str) -> str:
-    """Return ISO string for published_at; fallback to now if missing/unparseable."""
+    """Return UTC ISO string for published_at; fallback to empty if missing/unparseable."""
     if not value:
         return ""
     try:
-        return dtparser.parse(value).astimezone(None).isoformat()
+        return dtparser.parse(value).astimezone(timezone.utc).isoformat()
     except Exception:
         return ""
 
@@ -116,8 +112,6 @@ def enrich_from_raw_rows(paths: DbPaths, rows: List[Dict[str, Any]]) -> Dict[str
 
     Replace the placeholder `process_candidate(...)` with your actual pipeline logic.
     """
-    # Lazy import so this file can exist even before pipeline is created
-    # You should implement `src/pipeline.py` with `process_candidate_article(row)` returning an enriched event dict or None
     try:
         from src.pipeline import process_candidate_article  # type: ignore
     except Exception as e:

@@ -37,21 +37,104 @@ GEO_REGIONS = (
     "Unknown",
 )
 COUNTRY_MAP = {
-    "china": ("China", "East Asia"),
-    "japan": ("Japan", "East Asia"),
-    "korea": ("Korea", "East Asia"),
-    "south korea": ("South Korea", "East Asia"),
-    "india": ("India", "South Asia"),
-    "germany": ("Germany", "Europe"),
-    "france": ("France", "Europe"),
-    "uk": ("United Kingdom", "Europe"),
-    "united kingdom": ("United Kingdom", "Europe"),
-    "mexico": ("Mexico", "North America"),
-    "canada": ("Canada", "North America"),
+    # North America
     "united states": ("United States", "North America"),
     "u.s.": ("United States", "North America"),
+    "usa": ("United States", "North America"),
+    "u.s.a.": ("United States", "North America"),
+    "american": ("United States", "North America"),
+    "canada": ("Canada", "North America"),
+    "canadian": ("Canada", "North America"),
+    "mexico": ("Mexico", "North America"),
+    "mexican": ("Mexico", "North America"),
+    # Europe
+    "germany": ("Germany", "Europe"),
+    "german": ("Germany", "Europe"),
+    "france": ("France", "Europe"),
+    "french": ("France", "Europe"),
+    "uk": ("United Kingdom", "Europe"),
+    "united kingdom": ("United Kingdom", "Europe"),
+    "britain": ("United Kingdom", "Europe"),
+    "british": ("United Kingdom", "Europe"),
+    "england": ("United Kingdom", "Europe"),
+    "italy": ("Italy", "Europe"),
+    "italian": ("Italy", "Europe"),
+    "spain": ("Spain", "Europe"),
+    "spanish": ("Spain", "Europe"),
+    "netherlands": ("Netherlands", "Europe"),
+    "dutch": ("Netherlands", "Europe"),
+    "poland": ("Poland", "Europe"),
+    "polish": ("Poland", "Europe"),
+    "czech republic": ("Czech Republic", "Europe"),
+    "czechia": ("Czech Republic", "Europe"),
+    "hungary": ("Hungary", "Europe"),
+    "hungarian": ("Hungary", "Europe"),
+    "romania": ("Romania", "Europe"),
+    "slovakia": ("Slovakia", "Europe"),
+    "sweden": ("Sweden", "Europe"),
+    "swedish": ("Sweden", "Europe"),
+    "belgium": ("Belgium", "Europe"),
+    "austria": ("Austria", "Europe"),
+    "switzerland": ("Switzerland", "Europe"),
+    "portugal": ("Portugal", "Europe"),
+    "turkey": ("Turkey", "Middle East"),
+    "turkish": ("Turkey", "Middle East"),
+    # East Asia
+    "china": ("China", "East Asia"),
+    "chinese": ("China", "East Asia"),
+    "japan": ("Japan", "East Asia"),
+    "japanese": ("Japan", "East Asia"),
+    "south korea": ("South Korea", "East Asia"),
+    "korea": ("South Korea", "East Asia"),
+    "korean": ("South Korea", "East Asia"),
+    "taiwan": ("Taiwan", "East Asia"),
+    "taiwanese": ("Taiwan", "East Asia"),
+    # South Asia
+    "india": ("India", "South Asia"),
+    "indian": ("India", "South Asia"),
+    "pakistan": ("Pakistan", "South Asia"),
+    "bangladesh": ("Bangladesh", "South Asia"),
+    # Southeast Asia
+    "thailand": ("Thailand", "Southeast Asia"),
+    "thai": ("Thailand", "Southeast Asia"),
+    "vietnam": ("Vietnam", "Southeast Asia"),
+    "vietnamese": ("Vietnam", "Southeast Asia"),
+    "indonesia": ("Indonesia", "Southeast Asia"),
+    "indonesian": ("Indonesia", "Southeast Asia"),
+    "malaysia": ("Malaysia", "Southeast Asia"),
+    "malaysian": ("Malaysia", "Southeast Asia"),
+    "philippines": ("Philippines", "Southeast Asia"),
+    "filipino": ("Philippines", "Southeast Asia"),
+    "singapore": ("Singapore", "Southeast Asia"),
+    # Middle East
+    "saudi arabia": ("Saudi Arabia", "Middle East"),
+    "saudi": ("Saudi Arabia", "Middle East"),
+    "uae": ("United Arab Emirates", "Middle East"),
+    "united arab emirates": ("United Arab Emirates", "Middle East"),
+    "israel": ("Israel", "Middle East"),
+    "iran": ("Iran", "Middle East"),
+    "iraqi": ("Iraq", "Middle East"),
+    "iraq": ("Iraq", "Middle East"),
+    # Latin America
     "brazil": ("Brazil", "Latin America"),
-    "africa": ("Africa", "Africa"),
+    "brazilian": ("Brazil", "Latin America"),
+    "argentina": ("Argentina", "Latin America"),
+    "chile": ("Chile", "Latin America"),
+    "colombia": ("Colombia", "Latin America"),
+    # Africa
+    "south africa": ("South Africa", "Africa"),
+    "nigeria": ("Nigeria", "Africa"),
+    "kenya": ("Kenya", "Africa"),
+    "egypt": ("Egypt", "Africa"),
+    "ethiopia": ("Ethiopia", "Africa"),
+    # Russia / CIS
+    "russia": ("Russia", "Europe"),
+    "russian": ("Russia", "Europe"),
+    "ukraine": ("Ukraine", "Europe"),
+    "ukrainian": ("Ukraine", "Europe"),
+    # Oceania (map to nearest region)
+    "australia": ("Australia", "Southeast Asia"),
+    "australian": ("Australia", "Southeast Asia"),
 }
 OEMS = [
     "Tesla",
@@ -94,22 +177,34 @@ AUTO_TERMS = [
 DISRUPTION_TRIGGERS = [
     "strike",
     "shutdown",
+    "shut down",
     "closure",
+    "halt",
+    "halted",
+    "stoppage",
+    "shortage",
+    "disruption",
     "port",
     "congestion",
+    "delay",
     "export restriction",
     "export ban",
     "sanctions",
     "tariff",
     "cyberattack",
     "ransomware",
+    "hack",
+    "outage",
     "hurricane",
     "earthquake",
     "flood",
     "fire",
+    "typhoon",
+    "storm",
     "insolvency",
     "bankruptcy",
     "regulatory",
+    "recall",
 ]
 NEGATIVE_KEYWORDS = [
     "review",
@@ -163,7 +258,7 @@ def _get_groq_api_key() -> Optional[str]:
 class AppConfig:
     """Configuration for the application."""
 
-    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights", "groq_api_key", "groq_model")
+    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights", "groq_api_key", "groq_model", "refresh_interval_hours")
 
     def __init__(
         self,
@@ -176,6 +271,7 @@ class AppConfig:
         source_weights: dict[str, float],
         groq_api_key: Optional[str] = None,
         groq_model: str = "llama-3.1-8b-instant",
+        refresh_interval_hours: int = 24,
     ) -> None:
         object.__setattr__(self, "project_root", project_root)
         object.__setattr__(self, "db_path", db_path)
@@ -186,6 +282,7 @@ class AppConfig:
         object.__setattr__(self, "source_weights", source_weights)
         object.__setattr__(self, "groq_api_key", groq_api_key or _get_groq_api_key())
         object.__setattr__(self, "groq_model", os.environ.get("GROQ_MODEL") or groq_model)
+        object.__setattr__(self, "refresh_interval_hours", int(os.environ.get("REFRESH_INTERVAL_HOURS") or refresh_interval_hours))
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("AppConfig is immutable")

@@ -8,7 +8,6 @@ __all__ = [
     "filter_events",
     "render_sidebar",
     "render_debug_panel",
-    "render_groq_status",
     "render_events_table",
 ]
 
@@ -38,9 +37,10 @@ def load_events(db_path: Path) -> list[dict[str, object]]:
     return [row_to_dict(dict(row)) for row in rows]
 
 
-def auto_refresh_if_due(config: object, interval_hours: int = 3) -> bool:
-    """Run pipeline if the last refresh is older than the interval."""
+def auto_refresh_if_due(config: object) -> bool:
+    """Run pipeline if the last refresh is older than config.refresh_interval_hours (default 24h)."""
 
+    interval_hours = getattr(config, "refresh_interval_hours", 24)
     paths = DbPaths(config.db_path, config.db_url)
     init_db(paths)
     last_refresh = get_meta_value(paths, "last_refresh_at")
@@ -123,18 +123,6 @@ def inject_full_width_css() -> None:
         unsafe_allow_html=True,
     )
 
-
-def render_groq_status() -> None:
-    """Show Groq LLM status in the main content area. Call this at the top of every page."""
-    try:
-        config = get_config()
-        has_key = bool(getattr(config, "groq_api_key", None))
-        if has_key:
-            st.success("**Groq LLM:** configured — categorization and personalized mitigation enabled.")
-        else:
-            st.warning("**Groq LLM:** not configured. Add `GROQ_API_KEY` to `.streamlit/secrets.toml`.")
-    except Exception as e:
-        st.warning(f"Groq status check failed: {e}")
 
 
 def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, object]], bool]:

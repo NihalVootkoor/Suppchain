@@ -304,9 +304,11 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
 
     geo_country, geo_region, geo_conf = _extract_geo(text)
     if geo_country == "Unknown" and groq_geo_country:
-        geo_country = groq_geo_country
-        geo_region = "Unknown"
-        geo_conf = "Medium"
+        _gc = str(groq_geo_country).strip()
+        if _gc and _gc.lower() not in ("null", "none", "unknown", ""):
+            geo_country = _gc
+            geo_region = "Unknown"
+            geo_conf = "Medium"
     oems = _find_entities(text, OEMS)
     suppliers = _find_entities(text, TIER1S)
     components = _find_entities(text, AUTO_TERMS)

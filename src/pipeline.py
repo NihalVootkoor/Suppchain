@@ -1,13 +1,12 @@
 """Thin pipeline wrapper for deterministic backfill enrichment."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.config import get_config
 from src.date_utils import parse_datetime
 from src.llm_extract import extract_with_llm
-from src.models import LLMExtraction, RawArticle
+from src.models import RawArticle
 from src.scoring import build_enriched_event
 from src.serialization import event_to_row
 from src.storage import DbPaths, init_db, upsert_enriched_events
@@ -23,11 +22,6 @@ def _ensure_db() -> None:
     if not _DB_READY:
         init_db(_PATHS)
         _DB_READY = True
-
-
-def extract_structured_event(article: RawArticle) -> LLMExtraction:
-    """Deterministic placeholder for LLM extraction."""
-    return extract_with_llm(article)
 
 
 def _row_to_article(row: Dict[str, Any]) -> RawArticle:
@@ -47,7 +41,7 @@ def _row_to_article(row: Dict[str, Any]) -> RawArticle:
         source_name=source_name,
         source_weight=source_weight,
         published_at=published_at,
-        ingested_at=ingested_at or datetime.now(timezone.utc),
+        ingested_at=ingested_at,
         title=title or "Untitled",
         summary=summary or "",
         content=content or summary or "",
@@ -58,7 +52,7 @@ def process_candidate_article(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Process a single raw candidate row and write to enriched_events."""
     _ensure_db()
     article = _row_to_article(row)
-    extraction = extract_structured_event(article)
+    extraction = extract_with_llm(article)
     if not extraction.llm_validation_passed:
         return None
     event = build_enriched_event(article, extraction)

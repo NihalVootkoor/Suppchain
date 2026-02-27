@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import get_config
 from src.groq_client import classify_event_fields
+from src.llm_extract import _classify_pestel  # derive risk_category from disruption_type
 
 
 def _needs_reclassification(row: sqlite3.Row) -> bool:
@@ -119,6 +120,7 @@ def main() -> None:
             # In --all mode: update any field where LLM returns a more specific value
             if new_disruption != "Other" and new_disruption != old_disruption:
                 updates["disruption_type"] = new_disruption
+                updates["risk_category"] = _classify_pestel(new_disruption)
             if new_country != "Unknown" and new_country != old_country:
                 updates["geo_country"] = new_country
             if new_region != "Unknown" and new_region != old_region:
@@ -127,9 +129,10 @@ def main() -> None:
             # Default: only fill in Unknown/Other fields
             if old_disruption == "Other" and new_disruption != "Other":
                 updates["disruption_type"] = new_disruption
-            if old_country == "Unknown" and new_country != "Unknown":
+                updates["risk_category"] = _classify_pestel(new_disruption)
+            if old_country in ("Unknown", "null", "") and new_country not in ("Unknown", "null", ""):
                 updates["geo_country"] = new_country
-            if old_region == "Unknown" and new_region != "Unknown":
+            if old_region in ("Unknown", "") and new_region not in ("Unknown", ""):
                 updates["geo_region"] = new_region
 
         if not updates:
