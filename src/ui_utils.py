@@ -142,16 +142,19 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
 
     config = get_config()
     st.sidebar.header("Controls")
-    db_label = "Supabase" if config.db_url else "Local (SQLite)"
-    st.sidebar.info(f"**Database:** {db_label}")
-    if config.groq_api_key:
-        st.sidebar.success("**Groq LLM:** configured")
-    else:
-        st.sidebar.warning("**Groq LLM:** not configured")
     # Skip auto-refresh when using Supabase (Cloud) to avoid DB statement timeouts
     if not config.db_url and auto_refresh_if_due(config):
         st.sidebar.success("Auto refresh complete.")
     refresh_clicked = st.sidebar.button("Refresh data")
+    last_refresh = get_meta_value(DbPaths(config.db_path, config.db_url), "last_refresh_at")
+    if last_refresh:
+        try:
+            last_dt = parse_datetime(last_refresh)
+            st.sidebar.caption(f"Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}")
+        except Exception:
+            st.sidebar.caption(f"Last refresh: {last_refresh[:16]}")
+    else:
+        st.sidebar.caption("Last refresh: never")
     if refresh_clicked:
         try:
             run_pipeline(config)
@@ -228,11 +231,16 @@ def render_debug_panel(db_path: Path) -> None:
             }
         )
 
+    db_label = "Supabase" if config.db_url else "Local (SQLite)"
+    st.sidebar.info(f"**Database:** {db_label}")
+    if config.groq_api_key:
+        st.sidebar.success("**Groq LLM:** configured")
+    else:
+        st.sidebar.warning("**Groq LLM:** not configured")
+
     debug = get_debug_data(DbPaths(db_path, config.db_url))
     st.sidebar.subheader("Pipeline counts")
     st.sidebar.json(debug.counts)
-    st.sidebar.subheader("Rejected sample")
-    st.sidebar.table(debug.rejections)
 
 
 def _events_to_display_df(events: list[dict]) -> pd.DataFrame:
@@ -268,14 +276,31 @@ def render_events_table(
     df = _events_to_display_df(events)
     if use_aggrid:
         try:
-            from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+            from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+
+            title_link_renderer = JsCode("""
+class TitleLinkRenderer {
+    init(params) {
+        this.eGui = document.createElement('a');
+        const url = params.data.article_url || '#';
+        this.eGui.setAttribute('href', url);
+        this.eGui.setAttribute('target', '_blank');
+        this.eGui.setAttribute('rel', 'noopener noreferrer');
+        this.eGui.style.color = '#4da6ff';
+        this.eGui.style.textDecoration = 'none';
+        this.eGui.style.cursor = 'pointer';
+        this.eGui.innerText = params.value || '';
+    }
+    getGui() { return this.eGui; }
+}
+""")
 
             gb = GridOptionsBuilder.from_dataframe(df)
             gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=25)
             gb.configure_side_bar()
             gb.configure_default_column(sortable=True, filterable=True)
             gb.configure_column("article_url", hide=True)
-            gb.configure_column("title", flex=2)
+            gb.configure_column("title", flex=2, cellRenderer=title_link_renderer)
             gb.configure_column("risk_score", width=95)
             gb.configure_column("exposure_usd", width=110)
             gb.configure_column("delay_days", width=95)
@@ -284,18 +309,30 @@ def render_events_table(
             elif selection_mode == "multiple":
                 gb.configure_selection(selection_mode="multiple", use_checkbox=True)
             grid_options = gb.build()
-            st.markdown("**Event table** — sort, filter, and paginate. Select rows for detail.")
+            st.markdown("**Event table** — sort, filter, and paginate. Click a title to open the article.")
             grid_response = AgGrid(
                 df,
                 gridOptions=grid_options,
                 height=height,
                 update_mode=GridUpdateMode.MODEL_CHANGED,
                 theme="streamlit",
-                allow_unsafe_jscode=False,
+                allow_unsafe_jscode=True,
             )
-            if grid_response.get("selected_rows"):
-                st.subheader("Selected row")
-                st.json(grid_response["selected_rows"])
+            selected = grid_response.get("selected_rows")
+            if selected is not None:
+                has_selection = (
+                    not selected.empty
+                    if hasattr(selected, "empty")
+                    else bool(selected)
+                )
+                if has_selection:
+                    st.subheader("Selected row(s)")
+                    records = (
+                        selected.to_dict(orient="records")
+                        if hasattr(selected, "to_dict")
+                        else selected
+                    )
+                    st.json(records)
         except ImportError:
             _render_events_dataframe_fallback(df)
     else:

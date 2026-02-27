@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import html as _html
 import json
-import re
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -381,27 +380,11 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
     score = float(event.get("risk_score_0to100") or 0)
     title = _html.escape(str(event.get("title") or "Untitled Event"))
     url = str(event.get("article_url") or "#")
-    summary = str(event.get("event_summary") or "")
-    blurb = str(event.get("dashboard_blurb") or "")
     disruption = str(event.get("disruption_type") or "Unknown Type")
     country = str(event.get("geo_country") or "")
     region = str(event.get("geo_region") or "")
     delay_days = int(event.get("estimated_delay_days") or 0)
     published_at = str(event.get("published_at") or "")
-
-    # Deserialise JSON-encoded entity lists (come in as str from DB)
-    def _as_list(val) -> list:
-        if isinstance(val, list):
-            return val
-        if isinstance(val, str):
-            try:
-                return json.loads(val)
-            except Exception:
-                return []
-        return []
-
-    oem_entities = _as_list(event.get("oem_entities"))
-    comp_entities = _as_list(event.get("component_entities"))
 
     # Date
     try:
@@ -415,35 +398,6 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
 
     # Duration label
     duration_str = f"~{delay_days} days est. delay" if delay_days else "Unknown duration"
-
-    # ── Brief one-sentence summary — three-tier fallback ──────────────────────
-    brief = ""
-
-    # Tier 1: clean the event_summary
-    _clean = re.sub(r"\s*Estimated disruption duration[^.]*(?:\.[^.]*)?\.?\s*", " ", summary).strip().rstrip(".")
-    _clean = re.sub(
-        r"^(?:Labor Strike|Plant Shutdown|Port Congestion|Export Restriction|"
-        r"Cyberattack|Natural Disaster|Supplier Insolvency|Regulatory Change|Other)\s*\.?\s*",
-        "", _clean, flags=re.IGNORECASE,
-    ).strip()
-    # Reject if short or a prepositional fragment (lost its subject, e.g. "in China with potential…")
-    _prep_frag = bool(re.match(r"^(?:in|at|with|of|by|from|to)\b", _clean, re.IGNORECASE))
-    if len(_clean) >= 25 and not (_prep_frag and len(_clean.split()) < 10):
-        _m = re.search(r"^(.{25,200}?[.!?])\s", _clean + " ")
-        brief = _m.group(1) if _m else _clean[:200]
-
-    # Tier 2: dashboard_blurb
-    if not brief and blurb and len(blurb.strip()) >= 10:
-        brief = f"Identified risks: {blurb.strip()}"
-
-    # Tier 3: synthesise from structured metadata (entities + location)
-    if not brief:
-        affected = [str(e) for e in list(oem_entities)[:2] + list(comp_entities)[:2] if e]
-        entity_clause = f" affecting {', '.join(affected[:2])}" if affected else ""
-        loc_clause = f" in {location_str}" if location_str != "Location TBD" else ""
-        brief = f"{disruption} disruption{loc_clause}{entity_clause}."
-
-    brief = _html.escape(brief)
 
     # ── Compute mitigation first (before building HTML) ───────────────────────
     mit_desc, mit_actions, used_groq = _get_mitigation(event, config)
@@ -493,7 +447,7 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         f'<span style="background:rgba(239,68,68,0.18);color:#f87171;font-size:0.65rem;font-weight:800;padding:4px 11px;border-radius:4px;white-space:nowrap;">RISK {score:.0f}/100</span>'
         f'</div>'
         f'</div>'
-        f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:16px;font-size:0.72rem;font-weight:500;color:#ffffff;">'
+        f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;font-size:0.72rem;font-weight:500;color:#ffffff;">'
         f'<span>{_date}</span>'
         f'<span style="margin:0 8px;color:rgba(255,255,255,0.3);">&middot;</span>'
         f'<span>{_loc}</span>'
@@ -502,7 +456,6 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         f'<span style="margin:0 8px;color:rgba(255,255,255,0.3);">&middot;</span>'
         f'<span>{_dur}</span>'
         f'</div>'
-        f'<div style="font-size:0.89rem;color:#cbd5e1;line-height:1.68;border-top:1px solid rgba(255,255,255,0.08);padding-top:13px;">{brief}</div>'
         f'</div>'
         f'<div style="background:#0E1117;padding:18px 24px 16px;border-top:1.5px solid #3f4450;">'
         f'<div style="font-size:0.64rem;color:#ffffff;text-transform:uppercase;letter-spacing:0.11em;font-weight:700;margin-bottom:11px;">{source_label}</div>'
