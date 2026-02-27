@@ -6,6 +6,7 @@ import streamlit as st
 from src.aggregation import compute_kpis
 from src.config import get_config
 from src.ui_utils import (
+    inject_full_width_css,
     load_events,
     render_debug_panel,
     render_events_table,
@@ -16,6 +17,7 @@ from src.ui_utils import (
 
 def main() -> None:
     """Render the Command Center page."""
+    inject_full_width_css()
     config = get_config()
     st.info(f"**Database:** {'Supabase' if config.db_url else 'Local (SQLite)'}")
     render_groq_status()

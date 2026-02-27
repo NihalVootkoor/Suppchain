@@ -10,6 +10,12 @@ st.set_page_config(
 )
 
 try:
+    from src.ui_utils import inject_full_width_css
+    inject_full_width_css()
+except Exception:
+    pass
+
+try:
     from src.config import get_config
     from src.ui_utils import render_groq_status
 

@@ -9,28 +9,7 @@ import streamlit as st
 from src.aggregation import category_breakdown
 from src.config import get_config
 from src.geo_utils import get_event_coordinates
-from src.ui_utils import load_events, render_debug_panel, render_groq_status, render_sidebar
-
-
-def region_metrics(events: list[dict[str, object]], metric: str) -> list[dict[str, object]]:
-    """Aggregate region metrics."""
-
-    totals: dict[str, list[float]] = {}
-    for event in events:
-        region = str(event["geo_region"])
-        totals.setdefault(region, []).append(float(event["risk_score_0to100"]))
-    if metric == "count":
-        return [{"region": region, "value": len(values)} for region, values in totals.items()]
-    if metric == "avg_severity":
-        return [
-            {"region": region, "value": round(sum(values) / len(values), 2)}
-            for region, values in totals.items()
-        ]
-    exposure: dict[str, float] = {}
-    for event in events:
-        region = str(event["geo_region"])
-        exposure[region] = exposure.get(region, 0.0) + float(event["exposure_usd_est"])
-    return [{"region": region, "value": round(value, 2)} for region, value in exposure.items()]
+from src.ui_utils import inject_full_width_css, load_events, render_debug_panel, render_groq_status, render_sidebar
 
 
 def _render_pestel_bar_chart(events: list[dict]) -> None:
@@ -56,14 +35,19 @@ def _render_pestel_bar_chart(events: list[dict]) -> None:
                 text=df["count"],
                 textposition="outside",
                 texttemplate="%{text}",
+                hovertemplate="%{y}<br>Count: %{x}<extra></extra>",
             )
         ],
         layout=go.Layout(
-            title=dict(text="PESTEL Category Breakdown", font=dict(size=18)),
+            title=None,
             xaxis=dict(title="Number of events", gridcolor="rgba(128,128,128,0.2)"),
-            yaxis=dict(title="", automargin=True),
+            yaxis=dict(
+                title="",
+                automargin=True,
+                tickfont=dict(size=16),
+            ),
             margin=dict(l=20, r=80),
-            height=320,
+            height=460,
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
@@ -73,7 +57,7 @@ def _render_pestel_bar_chart(events: list[dict]) -> None:
         xaxis_rangeslider_visible=False,
         hovermode="y unified",
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": True})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True})
 
 
 def _render_world_risk_map(events: list[dict], layer_type: str) -> None:
@@ -115,7 +99,7 @@ def _render_world_risk_map(events: list[dict], layer_type: str) -> None:
             pickable=True,
             opacity=0.7,
         )
-    elif layer_type == "heatmap":
+    else:
         layer = pdk.Layer(
             "HeatmapLayer",
             data=map_data,
@@ -126,25 +110,12 @@ def _render_world_risk_map(events: list[dict], layer_type: str) -> None:
             threshold=0.05,
             pickable=True,
         )
-    else:
-        layer = pdk.Layer(
-            "HexagonLayer",
-            data=map_data,
-            get_position=["lon", "lat"],
-            get_elevation="risk_score",
-            elevation_scale=50,
-            radius=200000,
-            extruded=True,
-            pickable=True,
-            elevation_range=[0, 100],
-            coverage=0.9,
-        )
 
     view_state = pdk.ViewState(
         latitude=25.0,
         longitude=20.0,
         zoom=1.5,
-        pitch=40.0 if layer_type == "hexagon" else 25.0,
+        pitch=25.0,
         bearing=0,
     )
     r = pdk.Deck(
@@ -154,14 +125,18 @@ def _render_world_risk_map(events: list[dict], layer_type: str) -> None:
             "html": "<b>{title}</b><br/>Region: {region}<br/>Risk: {risk_score}<br/>Exposure: {exposure_usd}",
             "style": {"backgroundColor": "steelblue", "color": "white", "padding": "6px"},
         },
-        map_style="light",
+        map_style="dark",
         map_provider="carto",
     )
-    st.pydeck_chart(r, width="stretch")
+    try:
+        st.pydeck_chart(r, width="stretch")
+    except TypeError:
+        st.pydeck_chart(r, use_container_width=True)
 
 
 def main() -> None:
     """Render the Risk Radar page."""
+    inject_full_width_css()
     config = get_config()
     render_groq_status()
     st.title("Risk Radar")
@@ -173,26 +148,11 @@ def main() -> None:
         st.info("No events available. Use Refresh data to ingest RSS feeds.")
         return
 
-    metric = st.selectbox("Regional summary metric", ["count", "avg_severity", "exposure_usd"])
-    region_data = region_metrics(filtered, metric)
-    st.subheader("Regional Summary")
-    if region_data:
-        df = pd.DataFrame(region_data).set_index("region")
-        st.bar_chart(df)
-    else:
-        st.info("No regional data available.")
-
     st.subheader("PESTEL Category Breakdown")
     _render_pestel_bar_chart(filtered)
 
     st.subheader("World Risk Map")
-    map_layer = st.radio(
-        "Map layer",
-        ["ScatterplotLayer (dots by risk)", "HeatmapLayer (density)", "HexagonLayer (aggregation)"],
-        horizontal=True,
-    )
-    layer_key = "scatter" if "Scatterplot" in map_layer else ("heatmap" if "Heatmap" in map_layer else "hexagon")
-    _render_world_risk_map(filtered, layer_key)
+    _render_world_risk_map(filtered, "scatter")
 
 
 if __name__ == "__main__":

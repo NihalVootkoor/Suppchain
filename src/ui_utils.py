@@ -87,6 +87,34 @@ def _default_date_range(dates: Iterable[date]) -> tuple[date, date]:
     return start, end
 
 
+def inject_full_width_css() -> None:
+    """Inject CSS so main content uses full viewport width (call once per page)."""
+    st.markdown(
+        """
+        <style>
+        /* Force full-width layout: override Streamlit's centered max-width */
+        section.main .block-container,
+        .main .block-container,
+        div[data-testid="stAppViewContainer"] main .block-container,
+        div[data-testid="stAppViewContainer"] section.main div,
+        section[data-testid="stSidebar"] ~ div .block-container,
+        .block-container {
+            max-width: 100% !important;
+            width: 100% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+        /* Wrapper that Streamlit may add */
+        section.main > div {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_groq_status() -> None:
     """Show Groq LLM status in the main content area. Call this at the top of every page."""
     try:
