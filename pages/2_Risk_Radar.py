@@ -27,23 +27,27 @@ def _render_pestel_bar_chart(events: list[dict]) -> None:
                 orientation="h",
                 marker=dict(
                     color=df["count"],
-                    colorscale="Reds",
+                    colorscale=[[0, "rgb(220,245,220)"], [0.5, "rgb(100,200,120)"], [1, "rgb(20,120,60)"]],
                     showscale=True,
-                    colorbar=dict(title="Count"),
+                    colorbar=dict(
+                        title=dict(text="Count", font=dict(color="#FAFAFA")),
+                        tickfont=dict(color="#FAFAFA"),
+                    ),
                 ),
                 text=df["count"],
                 textposition="outside",
                 texttemplate="%{text}",
+                textfont=dict(color="#FAFAFA"),
                 hovertemplate="%{y}<br>Count: %{x}<extra></extra>",
             )
         ],
         layout=go.Layout(
             title=None,
-            xaxis=dict(title="Number of events", gridcolor="rgba(128,128,128,0.2)"),
+            xaxis=dict(title="Number of events", gridcolor="rgba(250,250,250,0.15)", tickfont=dict(color="#FAFAFA")),
             yaxis=dict(
                 title="",
                 automargin=True,
-                tickfont=dict(size=16),
+                tickfont=dict(size=16, color="#FAFAFA"),
             ),
             margin=dict(l=20, r=80),
             height=460,
@@ -56,11 +60,12 @@ def _render_pestel_bar_chart(events: list[dict]) -> None:
         xaxis_rangeslider_visible=False,
         hovermode="y unified",
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": True})
+    # Use config only for Plotly options to avoid "keyword arguments deprecated" warning
+    st.plotly_chart(fig, config={"displayModeBar": True})
 
 
 def _render_world_risk_map(events: list[dict]) -> None:
-    """Interactive world risk map using Plotly scatter_geo (avoids pydeck Python 3.13 serialization issues)."""
+    """Interactive world risk map (Plotly scatter_geo). No Pydeck to avoid 'undefined' label in UI."""
     if not events:
         return
     lats, lons, scores, titles, regions, exposures = [], [], [], [], [], []
@@ -70,8 +75,8 @@ def _render_world_risk_map(events: list[dict]) -> None:
         lons.append(float(lon))
         score = float(e.get("risk_score_0to100") or 0)
         scores.append(score)
-        titles.append(str(e.get("title") or "")[:60])
-        regions.append(str(e.get("geo_region") or ""))
+        titles.append((e.get("title") or "").strip() or "—")
+        regions.append((e.get("geo_region") or "").strip() or "—")
         exposures.append(round(float(e.get("exposure_usd_est") or 0), 0))
 
     fig = go.Figure(
@@ -81,33 +86,53 @@ def _render_world_risk_map(events: list[dict]) -> None:
             text=[f"{t}<br>Region: {r}<br>Risk: {s:.1f}<br>Exposure: ${e:,.0f}" for t, r, s, e in zip(titles, regions, scores, exposures)],
             mode="markers",
             marker=dict(
-                size=[8 + s / 5 for s in scores],
+                size=[12 + s / 3.5 for s in scores],
                 color=scores,
                 colorscale="Reds",
                 showscale=True,
-                colorbar=dict(title="Risk score"),
-                line=dict(width=0.5, color="gray"),
+                colorbar=dict(
+                    title=dict(text="Risk score", font=dict(color="#FAFAFA")),
+                    tickfont=dict(color="#FAFAFA"),
+                ),
+                line=dict(width=0),
+                opacity=0.92,
+                sizemode="diameter",
             ),
             hoverinfo="text",
+            hoverlabel=dict(bgcolor="#262730", font=dict(color="#FAFAFA", size=12)),
             name="",
         )
     )
+    # Match Streamlit dark theme: background #0E1117, secondary #262730, text #FAFAFA
+    theme_bg = "#0E1117"
+    theme_secondary = "#262730"
+    theme_text = "#FAFAFA"
     fig.update_geos(
         showland=True,
         showcountries=True,
         showlakes=True,
-        landcolor="rgb(243, 243, 243)",
-        countrycolor="rgb(204, 204, 204)",
-        coastlinecolor="rgb(204, 204, 204)",
+        showocean=True,
+        landcolor="rgb(45, 48, 58)",
+        oceancolor=theme_bg,
+        countrycolor="rgb(60, 63, 75)",
+        coastlinecolor="rgb(55, 58, 70)",
+        lakecolor=theme_bg,
         projection_type="natural earth",
+        bgcolor=theme_bg,
+        lataxis=dict(gridcolor="rgba(250,250,250,0.12)"),
+        lonaxis=dict(gridcolor="rgba(250,250,250,0.12)"),
     )
     fig.update_layout(
         title=None,
-        height=500,
-        margin=dict(l=0, r=0, t=30, b=0),
+        height=620,
+        margin=dict(l=0, r=0, t=24, b=0),
         geo=dict(scope="world"),
+        paper_bgcolor=theme_bg,
+        plot_bgcolor=theme_bg,
+        font=dict(color=theme_text, size=11),
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": True})
+    # Use config only for Plotly options to avoid "keyword arguments deprecated" warning
+    st.plotly_chart(fig, config={"displayModeBar": True})
 
 
 def main() -> None:
