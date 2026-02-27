@@ -9,7 +9,6 @@ from src.ui_utils import (
     load_events,
     render_debug_panel,
     render_events_table,
-    render_groq_status,
     render_sidebar,
 )
 
@@ -18,8 +17,7 @@ def main() -> None:
     """Render the Mitigation Explorer page."""
     inject_full_width_css()
     config = get_config()
-    render_groq_status()
-    st.title("Mitigation Explorer")
+    st.title("All Events")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:

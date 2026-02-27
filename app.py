@@ -17,11 +17,8 @@ except Exception:
 
 from src.command_center import render_command_center
 
-# Single nav: Command Center + other pages (no duplicate "app" list)
 nav = st.navigation([
     st.Page(render_command_center, title="Command Center", default=True),
-    st.Page("pages/2_Risk_Radar.py", title="Risk Radar"),
-    st.Page("pages/3_Trends.py", title="Trends"),
-    st.Page("pages/4_Mitigation_Explorer.py", title="Mitigation Explorer"),
+    st.Page("pages/4_Mitigation_Explorer.py", title="All Events"),
 ])
 nav.run()

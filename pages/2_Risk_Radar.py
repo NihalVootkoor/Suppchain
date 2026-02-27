@@ -8,7 +8,7 @@ import streamlit as st
 from src.aggregation import category_breakdown
 from src.config import get_config
 from src.geo_utils import get_event_coordinates
-from src.ui_utils import inject_full_width_css, load_events, render_debug_panel, render_groq_status, render_sidebar
+from src.ui_utils import inject_full_width_css, load_events, render_debug_panel, render_sidebar
 
 
 def _render_pestel_bar_chart(events: list[dict]) -> None:
@@ -139,7 +139,6 @@ def main() -> None:
     """Render the Risk Radar page."""
     inject_full_width_css()
     config = get_config()
-    render_groq_status()
     st.title("Risk Radar")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
