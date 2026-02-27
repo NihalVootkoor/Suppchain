@@ -6,10 +6,11 @@ import json
 import re
 from typing import Any, Optional
 
-from src.config import DISRUPTION_TYPES, RISK_CATEGORIES
+from src.config import DISRUPTION_TYPES, GEO_REGIONS, RISK_CATEGORIES
 
 DISRUPTION_LIST = ", ".join(DISRUPTION_TYPES)
 RISK_LIST = ", ".join(RISK_CATEGORIES)
+GEO_REGION_LIST = ", ".join(r for r in GEO_REGIONS if r != "Unknown")
 
 
 def _get_client(api_key: Optional[str]):
@@ -79,6 +80,76 @@ If the text is about a specific location, logistics, or regional disruption but 
             "risk_category": risk_cat,
             "risks_identified": out.get("risks_identified") or "",
             "geo_country": out.get("geo_country"),
+        }
+    except Exception:
+        return None
+
+
+def classify_event_fields(
+    title: str,
+    summary: str,
+    api_key: Optional[str],
+    model: str = "llama-3.1-8b-instant",
+) -> Optional[dict[str, Any]]:
+    """
+    Re-classify an event's disruption_type, geo_country, and geo_region using LLM.
+    Used to fix events stored as 'Other' disruption type or 'Unknown' geo fields.
+    Returns dict with: disruption_type, geo_country, geo_region.
+    Returns None if API key missing or request fails.
+    """
+    client = _get_client(api_key)
+    if not client:
+        return None
+    prompt = f"""You are an expert in automotive supply chain risk. Classify this news article.
+
+Allowed disruption_type (pick exactly one): {DISRUPTION_LIST}
+Allowed geo_region (pick exactly one): {GEO_REGION_LIST}, Unknown
+
+Title: {title}
+Summary: {summary[:2000]}
+
+Respond with ONLY a single JSON object, no markdown, no explanation:
+{{
+  "disruption_type": "<one of the allowed disruption types>",
+  "geo_country": "<country name, or null if truly unknown>",
+  "geo_region": "<one of the allowed geo regions, or Unknown>"
+}}
+
+Classification rules:
+- disruption_type: prefer specific types over "Other". Fire at factory = Plant Shutdown. Financial collapse = Supplier Insolvency. Import/export duties or tariffs = Export Restriction. Worker walkout = Labor Strike. Flooding/earthquake/storm = Natural Disaster. Hacking/ransomware = Cyberattack. Government rule change = Regulatory Change. Port delays/backlog = Port Congestion.
+- geo_country: infer from company names or events (Ford/GM plant in Michigan = United States, Volkswagen headquarters = Germany, Toyota = Japan, Hyundai/Kia = South Korea, BYD = China). Return null only if truly impossible to determine.
+- geo_region: derive from geo_country (United States/Canada/Mexico = North America, Germany/UK/France = Europe, China/Japan/South Korea = East Asia, India/Pakistan = South Asia, Thailand/Vietnam/Malaysia = Southeast Asia, Saudi Arabia/UAE = Middle East, Brazil/Argentina = Latin America, Nigeria/South Africa = Africa)."""
+
+    try:
+        resp = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You output only valid JSON. No markdown, no code fences."},
+                {"role": "user", "content": prompt},
+            ],
+            model=model,
+            temperature=0.1,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```\s*$", "", raw)
+        out = json.loads(raw)
+
+        disruption = out.get("disruption_type") or "Other"
+        if disruption not in DISRUPTION_TYPES:
+            disruption = "Other"
+
+        geo_country = out.get("geo_country") or "Unknown"
+        if not geo_country or str(geo_country).lower() in ("null", "none", "unknown", ""):
+            geo_country = "Unknown"
+
+        geo_region = out.get("geo_region") or "Unknown"
+        if geo_region not in GEO_REGIONS:
+            geo_region = "Unknown"
+
+        return {
+            "disruption_type": disruption,
+            "geo_country": str(geo_country),
+            "geo_region": str(geo_region),
         }
     except Exception:
         return None
