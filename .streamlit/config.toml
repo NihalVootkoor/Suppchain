@@ -1,2 +1,2 @@
-[client]
-showSidebarNavigation = false
+# Sidebar nav is driven by st.navigation() in app.py.
+# Keep showSidebarNavigation as default (true) so the nav is visible.
