@@ -27,6 +27,7 @@ from src.storage import (
     insert_rejections,
     purge_old_enriched_events,
     purge_old_raw_articles,
+    purge_old_rejected_articles,
     upsert_enriched_events,
     upsert_raw_articles,
 )
@@ -262,6 +263,7 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
     upsert_enriched_events(paths, [event_to_row(event) for event in enriched_events])
     purge_old_raw_articles(paths, config.retention_days)
     purge_old_enriched_events(paths, config.enriched_retention_days)
+    purge_old_rejected_articles(paths, config.retention_days)
     return {
         "ingested": len(articles),
         "kept": len(kept),

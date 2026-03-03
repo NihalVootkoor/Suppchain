@@ -21,6 +21,7 @@ class KpiSummary:
     total_exposure_usd: float
     events_this_week: int       # events published in the last 7 days
     events_last_week: int       # events published in the 7 days before that
+    highest_risk_region: str    # region with highest avg risk score (excluding Unknown)
 
 
 def _as_float(values: Iterable[float]) -> float:
@@ -69,6 +70,18 @@ def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
     high_critical = sum(1 for row in rows if row["severity_band"] in {"High", "Critical"})
     avg_delay = _as_float([float(row["estimated_delay_days"]) for row in rows])
     exposure = sum(float(row["exposure_usd_est"]) for row in rows)
+
+    # Highest risk region by average score, excluding Unknown/empty
+    region_scores: dict[str, list[float]] = {}
+    for row in rows:
+        region = str(row.get("geo_region") or "").strip()
+        if region and region.lower() not in ("unknown", "n/a", ""):
+            region_scores.setdefault(region, []).append(float(row["risk_score_0to100"]))
+    highest_risk_region = (
+        max(region_scores, key=lambda r: sum(region_scores[r]) / len(region_scores[r]))
+        if region_scores else ""
+    )
+
     return KpiSummary(
         total_events=len(rows),
         high_critical_events=high_critical,
@@ -78,6 +91,7 @@ def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
         total_exposure_usd=round(exposure, 2),
         events_this_week=events_this_week,
         events_last_week=events_last_week,
+        highest_risk_region=highest_risk_region,
     )
 
 

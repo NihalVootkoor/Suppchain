@@ -354,6 +354,27 @@ def purge_old_raw_articles(paths: DbPaths, retention_days: int) -> int:
         return cur.rowcount
 
 
+def purge_old_rejected_articles(paths: DbPaths, retention_days: int) -> int:
+    """Delete rejected articles older than retention window by created_at."""
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    if _use_postgres(paths):
+        with get_connection(paths) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM rejected_articles WHERE created_at < %s",
+                    (cutoff.isoformat(),),
+                )
+                return cur.rowcount
+
+    with get_connection(paths) as conn:
+        cur = conn.execute(
+            "DELETE FROM rejected_articles WHERE created_at < ?",
+            (cutoff.isoformat(),),
+        )
+        return cur.rowcount
+
+
 def purge_old_enriched_events(paths: DbPaths, retention_days: int) -> int:
     """Delete enriched events older than retention window by published_at."""
 

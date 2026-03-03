@@ -156,11 +156,10 @@ _KPI_VALUE_COLOR = "#ffffff"
 _KPI_LABEL_COLOR = "#94a3b8"
 
 
-def _kpi_card_html(label: str, value: str, subtitle: str = "") -> str:
-    subtitle_html = (
-        f'<div style="font-size:0.62rem;color:{_KPI_LABEL_COLOR};margin-top:6px;'
-        f'font-style:italic;">{subtitle}</div>'
-        if subtitle else ""
+def _kpi_card_html(label: str, value: str, change_html: str = "") -> str:
+    change_div = (
+        f'<div style="font-size:1rem;font-weight:700;white-space:nowrap;">{change_html}</div>'
+        if change_html else ""
     )
     return (
         f'<div style="background:{_KPI_CARD_BG};border-radius:10px;'
@@ -168,46 +167,58 @@ def _kpi_card_html(label: str, value: str, subtitle: str = "") -> str:
         f'margin-bottom:8px;">'
         f'<div style="font-size:0.64rem;color:{_KPI_LABEL_COLOR};text-transform:uppercase;'
         f'letter-spacing:0.1em;font-weight:600;margin-bottom:10px;">{label}</div>'
+        f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
         f'<div style="font-size:2rem;font-weight:700;color:{_KPI_VALUE_COLOR};'
         f'line-height:1.1;">{value}</div>'
-        f'{subtitle_html}'
+        f'{change_div}'
+        f'</div>'
         f"</div>"
     )
 
 
 def _render_kpi_cards(kpis) -> None:
     """Six uniform KPI cards in two rows of three."""
-    # Week-over-week event delta for "Active Risk Events"
+    # Week-over-week event delta — red if more events (worse), green if fewer (better)
     week_delta = kpis.events_this_week - kpis.events_last_week
     week_arrow = "▲" if week_delta >= 0 else "▼"
-    week_subtitle = f"{week_arrow} {abs(week_delta)} vs last week ({kpis.events_last_week})"
+    week_color = "#ef4444" if week_delta >= 0 else "#22c55e"
+    week_change_html = (
+        f'<span style="color:{week_color};">'
+        f'{week_arrow} {abs(week_delta)} vs last week'
+        f'</span>'
+    )
 
-    # 7-day rolling severity delta
-    delta_up = kpis.delta_vs_yesterday > 0
-    delta_arrow = "▲" if delta_up else "▼"
-    delta_val = f"{delta_arrow} {abs(kpis.delta_vs_yesterday):.1f}"
+    # 7-day severity delta — red if severity rose (worse), green if fell (better)
+    sev_delta = kpis.delta_vs_yesterday
+    sev_arrow = "▲" if sev_delta > 0 else "▼"
+    sev_color = "#ef4444" if sev_delta > 0 else ("#22c55e" if sev_delta < 0 else "#94a3b8")
+    sev_change_html = (
+        f'<span style="color:{sev_color};">'
+        f'{sev_arrow} {abs(sev_delta):.1f} vs last week'
+        f'</span>'
+    )
 
     col1, col2, col3 = st.columns(3)
     col1.markdown(
-        _kpi_card_html("Active Risk Events", str(kpis.total_events), subtitle=week_subtitle),
+        _kpi_card_html("Active Risk Events", str(kpis.total_events), change_html=week_change_html),
         unsafe_allow_html=True,
     )
     col2.markdown(_kpi_card_html("High / Critical Events", str(kpis.high_critical_events)), unsafe_allow_html=True)
-    col3.markdown(_kpi_card_html("Avg Severity Score (7d)", f"{kpis.avg_severity_today:.1f}"), unsafe_allow_html=True)
+    col3.markdown(
+        _kpi_card_html("Avg Severity Score (7d)", f"{kpis.avg_severity_today:.1f}", change_html=sev_change_html),
+        unsafe_allow_html=True,
+    )
 
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     col4, col5, col6 = st.columns(3)
-    # "Severity Change (7d)" — current 7-day avg vs prior 7-day avg.
-    # Positive (▲) means risk severity increased; negative (▼) means it improved.
-    col4.markdown(_kpi_card_html("Severity Change (7d)", delta_val), unsafe_allow_html=True)
+    col4.markdown(
+        _kpi_card_html("Highest Risk Region", kpis.highest_risk_region or "—"),
+        unsafe_allow_html=True,
+    )
     col5.markdown(_kpi_card_html("Avg Estimated Delay", f"{kpis.avg_delay_days:.1f} days"), unsafe_allow_html=True)
     col6.markdown(
-        _kpi_card_html(
-            "Total Estimated Exposure",
-            f"${kpis.total_exposure_usd:,.0f}",
-            subtitle="Model estimate — not actual spend",
-        ),
+        _kpi_card_html("Total Estimated Exposure", f"${kpis.total_exposure_usd:,.0f}"),
         unsafe_allow_html=True,
     )
 
@@ -369,6 +380,8 @@ def _render_world_risk_map(events: list[dict]) -> None:
     lats, lons, scores, titles, regions, exposures = [], [], [], [], [], []
     for e in events:
         lat, lon = get_event_coordinates(e)
+        if lat == 0.0 and lon == 0.0:
+            continue
         lats.append(float(lat))
         lons.append(float(lon))
         try:
@@ -397,10 +410,17 @@ def _render_world_risk_map(events: list[dict]) -> None:
                 size=[12 + s / 3.5 for s in scores],
                 color=scores,
                 colorscale="Reds",
+                cmin=0,
+                cmax=100,
                 showscale=True,
                 colorbar=dict(
                     title=dict(text="Risk Score", font=dict(color="#FAFAFA")),
                     tickfont=dict(color="#FAFAFA"),
+                    x=1.01,
+                    xanchor="left",
+                    y=0.5,
+                    yanchor="middle",
+                    len=0.6,
                 ),
                 line=dict(width=0),
                 opacity=0.92,
@@ -428,10 +448,10 @@ def _render_world_risk_map(events: list[dict]) -> None:
         lonaxis=dict(gridcolor="rgba(250,250,250,0.10)"),
     )
     fig.update_layout(
-        title=None,
+        title="",
         height=520,
-        margin=dict(l=0, r=0, t=8, b=0),
-        geo=dict(scope="world"),
+        margin=dict(l=0, r=70, t=8, b=0),
+        geo=dict(scope="world", lonaxis=dict(range=[-180, 180]), lataxis=dict(range=[-90, 90])),
         paper_bgcolor=theme_bg,
         plot_bgcolor=theme_bg,
         font=dict(color="#FAFAFA", size=11),
