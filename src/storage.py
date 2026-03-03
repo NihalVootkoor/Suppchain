@@ -1,11 +1,12 @@
 """Storage helpers and migrations for SQLite/Postgres."""
+
 from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 try:  # Optional dependency for Supabase/Postgres
     import psycopg2  # type: ignore
@@ -72,7 +73,7 @@ def get_sqlite_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def get_pg_connection(db_url: str):
+def get_pg_connection(db_url: str) -> Any:
     """Create a Postgres connection."""
 
     _require_postgres()
@@ -215,14 +216,14 @@ def upsert_raw_articles(paths: DbPaths, rows: Iterable[dict[str, object]]) -> in
         return len(prepared)
 
     with get_connection(paths) as conn:
-        conn.executemany(
+        cur = conn.executemany(
             "INSERT OR IGNORE INTO raw_articles (article_id, article_url, source_name, "
             "source_weight, published_at, ingested_at, title, summary, content) "
             "VALUES (:article_id, :article_url, :source_name, :source_weight, "
             ":published_at, :ingested_at, :title, :summary, :content)",
             prepared,
         )
-        return conn.total_changes
+        return cur.rowcount
 
 
 def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
@@ -280,7 +281,7 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
         return len(prepared)
 
     with get_connection(paths) as conn:
-        conn.executemany(
+        cur = conn.executemany(
             "INSERT OR REPLACE INTO enriched_events (event_id, article_url, source_name, "
             "source_weight, published_at, ingested_at, title, event_summary, dashboard_blurb, "
             "reason_flagged, oem_entities, supplier_entities, component_entities, "
@@ -302,7 +303,7 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
             ":rejected_reason, :created_at)",
             prepared,
         )
-        return conn.total_changes
+        return cur.rowcount
 
 
 def insert_rejections(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
@@ -324,12 +325,12 @@ def insert_rejections(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
         return len(prepared)
 
     with get_connection(paths) as conn:
-        conn.executemany(
+        cur = conn.executemany(
             "INSERT OR REPLACE INTO rejected_articles (article_url, reason, created_at) "
             "VALUES (:article_url, :reason, :created_at)",
             prepared,
         )
-        return conn.total_changes
+        return cur.rowcount
 
 
 def purge_old_raw_articles(paths: DbPaths, retention_days: int) -> int:
@@ -346,11 +347,11 @@ def purge_old_raw_articles(paths: DbPaths, retention_days: int) -> int:
                 return cur.rowcount
 
     with get_connection(paths) as conn:
-        conn.execute(
+        cur = conn.execute(
             "DELETE FROM raw_articles WHERE ingested_at < ?",
             (cutoff.isoformat(),),
         )
-        return conn.total_changes
+        return cur.rowcount
 
 
 def purge_old_enriched_events(paths: DbPaths, retention_days: int) -> int:
@@ -367,11 +368,11 @@ def purge_old_enriched_events(paths: DbPaths, retention_days: int) -> int:
                 return cur.rowcount
 
     with get_connection(paths) as conn:
-        conn.execute(
+        cur = conn.execute(
             "DELETE FROM enriched_events WHERE published_at < ?",
             (cutoff.isoformat(),),
         )
-        return conn.total_changes
+        return cur.rowcount
 
 
 def fetch_enriched_events(paths: DbPaths, limit: int = 500) -> list[dict[str, object]]:

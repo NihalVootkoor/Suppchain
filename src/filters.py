@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from src.config import DISRUPTION_TRIGGERS as _CONFIG_TRIGGERS, NEGATIVE_KEYWORDS as _CONFIG_NEGATIVES, OEMS
+from src.config import (
+    DISRUPTION_TRIGGERS as _CONFIG_TRIGGERS,
+    NEGATIVE_KEYWORDS as _CONFIG_NEGATIVES,
+    OEMS,
+)
 from src.models import RawArticle
 
 
@@ -30,6 +34,17 @@ AUTOMOTIVE_ANCHORS: tuple[str, ...] = tuple(
             "ev",
             "electric vehicle",
             "oem",
+            # Supply chain / logistics terms — these feeds are inherently supply-chain focused
+            "supply chain",
+            "semiconductor",
+            "chip",
+            "logistics",
+            "shipping",
+            "freight",
+            "truck",
+            "trucker",
+            "trucking",
+            "fleet",
             *[oem.lower() for oem in OEMS],
         }
     )

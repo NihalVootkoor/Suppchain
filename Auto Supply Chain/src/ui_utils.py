@@ -12,8 +12,9 @@ __all__ = [
 ]
 
 from datetime import date, datetime, timedelta, timezone
+import logging
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable  # noqa: UP006 — used in public __all__ signatures
 
 import pandas as pd
 import streamlit as st
@@ -24,6 +25,8 @@ from src.debug import get_debug_data
 from src.rss_ingest import run_pipeline
 from src.storage import DbPaths, fetch_enriched_events, get_meta_value, init_db, set_meta_value
 from src.storage_utils import row_to_dict
+
+_logger = logging.getLogger(__name__)
 
 
 @st.cache_data(ttl=300)
@@ -60,9 +63,9 @@ def filter_events(
     events: list[dict[str, object]],
     start: date,
     end: date,
-    categories: Tuple[str, ...],
-    regions: Tuple[str, ...],
-    severity_range: Tuple[float, float],
+    categories: tuple[str, ...],
+    regions: tuple[str, ...],
+    severity_range: tuple[float, float],
 ) -> list[dict[str, object]]:
     """Filter events using sidebar filters."""
 
@@ -139,8 +142,9 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         try:
             last_dt = parse_datetime(last_refresh)
             st.sidebar.caption(f"Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}")
-        except Exception:
-            st.sidebar.caption(f"Last refresh: {last_refresh[:16]}")
+        except Exception as _exc:
+            _logger.warning("Failed to parse last_refresh_at %r: %s", last_refresh, _exc)
+            st.sidebar.caption(f"Last refresh: {last_refresh[:16] if last_refresh else '—'}")
     else:
         st.sidebar.caption("Last refresh: never")
     if refresh_clicked:
@@ -231,22 +235,40 @@ def render_debug_panel(db_path: Path) -> None:
     st.sidebar.json(debug.counts)
 
 
+def _safe_url(raw: object) -> str:
+    """Return url only if it starts with http/https, else empty string."""
+    s = str(raw or "").strip()
+    return s if s.startswith(("http://", "https://")) else ""
+
+
 def _events_to_display_df(events: list[dict]) -> pd.DataFrame:
     """Build a display DataFrame from event dicts (selected columns for table)."""
-    rows: List[dict] = []
+    rows: list[dict] = []
     for e in events:
+        try:
+            risk_score = round(float(e.get("risk_score_0to100") or 0), 1)
+        except (ValueError, TypeError):
+            risk_score = 0.0
+        try:
+            exposure_usd = round(float(e.get("exposure_usd_est") or 0), 0)
+        except (ValueError, TypeError):
+            exposure_usd = 0.0
+        try:
+            delay_days = int(e.get("estimated_delay_days") or 0)
+        except (ValueError, TypeError):
+            delay_days = 0
         rows.append({
             "title": str(e.get("title") or ""),
             "risk_category": str(e.get("risk_category") or ""),
             "disruption_type": str(e.get("disruption_type") or ""),
             "geo_region": str(e.get("geo_region") or ""),
             "geo_country": str(e.get("geo_country") or ""),
-            "risk_score": round(float(e.get("risk_score_0to100") or 0), 1),
+            "risk_score": risk_score,
             "severity_band": str(e.get("severity_band") or ""),
-            "exposure_usd": round(float(e.get("exposure_usd_est") or 0), 0),
-            "delay_days": int(e.get("estimated_delay_days") or 0),
+            "exposure_usd": exposure_usd,
+            "delay_days": delay_days,
             "published_at": str(e.get("published_at") or ""),
-            "article_url": str(e.get("article_url") or ""),
+            "article_url": _safe_url(e.get("article_url")),
         })
     return pd.DataFrame(rows)
 
@@ -289,7 +311,7 @@ class TitleLinkRenderer {
             gb.configure_default_column(sortable=True, filterable=True)
             gb.configure_column("article_url", hide=True)
             gb.configure_column("title", flex=2, cellRenderer=title_link_renderer)
-            gb.configure_column("risk_score", width=95)
+            gb.configure_column("risk_score", width=95, sort="desc", sortIndex=0)
             gb.configure_column("exposure_usd", width=110)
             gb.configure_column("delay_days", width=95)
             if selection_mode == "single":

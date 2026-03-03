@@ -15,7 +15,6 @@ def row_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "supplier_entities",
         "component_entities",
         "mitigation_actions",
-        "mitigation_actions_json",
     )
     for key in list_keys:
         value = data.get(key)

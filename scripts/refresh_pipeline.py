@@ -32,7 +32,11 @@ def main() -> int:
 
     config = get_config(REPO_ROOT)
     paths = DbPaths(config.db_path, config.db_url)
-    init_db(paths)
+    try:
+        init_db(paths)
+    except Exception as exc:
+        print(f"ERROR: Failed to initialize database: {exc}", file=sys.stderr)
+        return 1
     stats = run_pipeline(config)
     set_meta_value(paths, "last_refresh_at", datetime.now(timezone.utc).isoformat())
 

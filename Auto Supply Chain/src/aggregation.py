@@ -15,10 +15,12 @@ class KpiSummary:
 
     total_events: int
     high_critical_events: int
-    avg_severity_today: float
-    delta_vs_yesterday: float
+    avg_severity_today: float   # 7-day rolling average of risk scores
+    delta_vs_yesterday: float   # delta between current 7d avg and prior 7d avg
     avg_delay_days: float
     total_exposure_usd: float
+    events_this_week: int       # events published in the last 7 days
+    events_last_week: int       # events published in the 7 days before that
 
 
 def _as_float(values: Iterable[float]) -> float:
@@ -31,32 +33,51 @@ def _as_float(values: Iterable[float]) -> float:
 
 
 def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
-    """Compute KPI summary from enriched events rows."""
+    """Compute KPI summary from enriched events rows.
+
+    Severity metrics use 7-day rolling windows to smooth daily noise:
+    - avg_severity_today: mean risk score over the current 7-day window
+    - delta_vs_yesterday: difference between current 7d avg and prior 7d avg
+    """
 
     today = date.today()
-    yesterday = today - timedelta(days=1)
-    today_scores = []
-    yesterday_scores = []
+    # Current window: last 7 days (today inclusive)
+    week_start = today - timedelta(days=6)
+    # Prior window: 7 days before that
+    prior_end = today - timedelta(days=7)
+    prior_start = today - timedelta(days=13)
+
+    current_7d_scores: list[float] = []
+    prior_7d_scores: list[float] = []
+    events_this_week = 0
+    events_last_week = 0
+
     for row in rows:
         published_at = parse_datetime(str(row["published_at"])).date()
         score = float(row["risk_score_0to100"])
-        if published_at == today:
-            today_scores.append(score)
-        if published_at == yesterday:
-            yesterday_scores.append(score)
-    avg_today = _as_float(today_scores)
-    avg_yesterday = _as_float(yesterday_scores)
-    delta = avg_today - avg_yesterday
+        if week_start <= published_at <= today:
+            current_7d_scores.append(score)
+            events_this_week += 1
+        if prior_start <= published_at <= prior_end:
+            prior_7d_scores.append(score)
+            events_last_week += 1
+
+    avg_current_7d = _as_float(current_7d_scores)
+    avg_prior_7d = _as_float(prior_7d_scores)
+    delta = avg_current_7d - avg_prior_7d
+
     high_critical = sum(1 for row in rows if row["severity_band"] in {"High", "Critical"})
     avg_delay = _as_float([float(row["estimated_delay_days"]) for row in rows])
     exposure = sum(float(row["exposure_usd_est"]) for row in rows)
     return KpiSummary(
         total_events=len(rows),
         high_critical_events=high_critical,
-        avg_severity_today=round(avg_today, 2),
+        avg_severity_today=round(avg_current_7d, 2),
         delta_vs_yesterday=round(delta, 2),
         avg_delay_days=round(avg_delay, 2),
         total_exposure_usd=round(exposure, 2),
+        events_this_week=events_this_week,
+        events_last_week=events_last_week,
     )
 
 

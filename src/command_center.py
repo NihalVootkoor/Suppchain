@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html as _html
 import json
+import logging
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -17,6 +18,8 @@ from src.ui_utils import (
     render_debug_panel,
     render_sidebar,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ── Severity styling ──────────────────────────────────────────────────────────
 _SEVERITY_COLORS = {
@@ -127,7 +130,8 @@ def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
                 groq_api_key=config.groq_api_key,
                 groq_model=config.groq_model,
             )
-        except Exception:
+        except Exception as _exc:
+            _logger.warning("Groq mitigation failed for event %s: %s", event.get("event_id"), _exc)
             result = None
         if result:
             desc = result.get("mitigation_description") or ""
@@ -152,7 +156,12 @@ _KPI_VALUE_COLOR = "#ffffff"
 _KPI_LABEL_COLOR = "#94a3b8"
 
 
-def _kpi_card_html(label: str, value: str) -> str:
+def _kpi_card_html(label: str, value: str, subtitle: str = "") -> str:
+    subtitle_html = (
+        f'<div style="font-size:0.62rem;color:{_KPI_LABEL_COLOR};margin-top:6px;'
+        f'font-style:italic;">{subtitle}</div>'
+        if subtitle else ""
+    )
     return (
         f'<div style="background:{_KPI_CARD_BG};border-radius:10px;'
         f'padding:20px 22px 18px;border-top:3px solid {_KPI_ACCENT};'
@@ -161,36 +170,46 @@ def _kpi_card_html(label: str, value: str) -> str:
         f'letter-spacing:0.1em;font-weight:600;margin-bottom:10px;">{label}</div>'
         f'<div style="font-size:2rem;font-weight:700;color:{_KPI_VALUE_COLOR};'
         f'line-height:1.1;">{value}</div>'
+        f'{subtitle_html}'
         f"</div>"
     )
 
 
 def _render_kpi_cards(kpis) -> None:
     """Six uniform KPI cards in two rows of three."""
+    # Week-over-week event delta for "Active Risk Events"
+    week_delta = kpis.events_this_week - kpis.events_last_week
+    week_arrow = "▲" if week_delta >= 0 else "▼"
+    week_subtitle = f"{week_arrow} {abs(week_delta)} vs last week ({kpis.events_last_week})"
+
+    # 7-day rolling severity delta
     delta_up = kpis.delta_vs_yesterday > 0
     delta_arrow = "▲" if delta_up else "▼"
-    delta_val = f"{delta_arrow} {abs(kpis.delta_vs_yesterday):.2f}"
-
-    cards = [
-        ("Active Risk Events", str(kpis.total_events)),
-        ("High / Critical Events", str(kpis.high_critical_events)),
-        ("Avg Severity Score", f"{kpis.avg_severity_today:.1f}"),
-        # "Severity Change (24h)" — avg risk score today minus yesterday's average.
-        # Positive (▲) means risk severity increased; negative (▼) means it improved.
-        ("Severity Change (24h)", delta_val),
-        ("Avg Estimated Delay", f"{kpis.avg_delay_days:.1f} days"),
-        ("Total Estimated Exposure", f"${kpis.total_exposure_usd:,.0f}"),
-    ]
+    delta_val = f"{delta_arrow} {abs(kpis.delta_vs_yesterday):.1f}"
 
     col1, col2, col3 = st.columns(3)
-    for col, (label, value) in zip([col1, col2, col3], cards[:3]):
-        col.markdown(_kpi_card_html(label, value), unsafe_allow_html=True)
+    col1.markdown(
+        _kpi_card_html("Active Risk Events", str(kpis.total_events), subtitle=week_subtitle),
+        unsafe_allow_html=True,
+    )
+    col2.markdown(_kpi_card_html("High / Critical Events", str(kpis.high_critical_events)), unsafe_allow_html=True)
+    col3.markdown(_kpi_card_html("Avg Severity Score (7d)", f"{kpis.avg_severity_today:.1f}"), unsafe_allow_html=True)
 
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     col4, col5, col6 = st.columns(3)
-    for col, (label, value) in zip([col4, col5, col6], cards[3:]):
-        col.markdown(_kpi_card_html(label, value), unsafe_allow_html=True)
+    # "Severity Change (7d)" — current 7-day avg vs prior 7-day avg.
+    # Positive (▲) means risk severity increased; negative (▼) means it improved.
+    col4.markdown(_kpi_card_html("Severity Change (7d)", delta_val), unsafe_allow_html=True)
+    col5.markdown(_kpi_card_html("Avg Estimated Delay", f"{kpis.avg_delay_days:.1f} days"), unsafe_allow_html=True)
+    col6.markdown(
+        _kpi_card_html(
+            "Total Estimated Exposure",
+            f"${kpis.total_exposure_usd:,.0f}",
+            subtitle="Model estimate — not actual spend",
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 # ── Charts ────────────────────────────────────────────────────────────────────
@@ -200,7 +219,7 @@ _TICK_COLOR = "#9ca3af"
 
 
 def _render_severity_trend(events: list[dict]) -> None:
-    """Risk Severity Over Time — Plotly area line chart."""
+    """Risk Severity Over Time — Plotly area line chart with threshold lines and 7d rolling avg."""
     df = pd.DataFrame(events)
     if df.empty:
         st.info("No data available.")
@@ -212,17 +231,33 @@ def _render_severity_trend(events: list[dict]) -> None:
         .reset_index()
         .sort_values("published_date")
     )
+    # 7-day rolling average (over data points, min 1 period)
+    severity["rolling_7d"] = severity["risk_score_0to100"].rolling(7, min_periods=1).mean()
+
     fig = go.Figure()
+    # Area: daily avg
     fig.add_trace(
         go.Scatter(
             x=severity["published_date"],
             y=severity["risk_score_0to100"],
             mode="lines+markers",
+            name="Daily Avg",
             line=dict(color=_KPI_ACCENT, width=2),
             marker=dict(size=4, color=_KPI_ACCENT),
             fill="tozeroy",
             fillcolor="rgba(37,99,235,0.10)",
-            hovertemplate="<b>%{x}</b><br>Avg Severity: %{y:.1f}<extra></extra>",
+            hovertemplate="<b>%{x}</b><br>Daily Avg: %{y:.1f}<extra></extra>",
+        )
+    )
+    # 7-day rolling average line
+    fig.add_trace(
+        go.Scatter(
+            x=severity["published_date"],
+            y=severity["rolling_7d"],
+            mode="lines",
+            name="7d Avg",
+            line=dict(color="rgba(255,255,255,0.55)", width=1.5, dash="dot"),
+            hovertemplate="<b>%{x}</b><br>7d Avg: %{y:.1f}<extra></extra>",
         )
     )
     fig.update_layout(
@@ -243,8 +278,35 @@ def _render_severity_trend(events: list[dict]) -> None:
         plot_bgcolor=_CHART_BG,
         paper_bgcolor=_CHART_BG,
         font=dict(color=_TICK_COLOR),
-        showlegend=False,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            x=0,
+            y=1.08,
+            font=dict(color=_TICK_COLOR, size=10),
+            bgcolor="rgba(0,0,0,0)",
+        ),
         hovermode="x unified",
+    )
+    # High threshold line (70)
+    fig.add_hline(
+        y=70,
+        line_dash="dash",
+        line_color="#e67e22",
+        line_width=1,
+        annotation_text="High (70)",
+        annotation_position="right",
+        annotation_font=dict(color="#e67e22", size=9),
+    )
+    # Critical threshold line (85)
+    fig.add_hline(
+        y=85,
+        line_dash="dash",
+        line_color="#c0392b",
+        line_width=1,
+        annotation_text="Critical (85)",
+        annotation_position="right",
+        annotation_font=dict(color="#c0392b", size=9),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -309,11 +371,18 @@ def _render_world_risk_map(events: list[dict]) -> None:
         lat, lon = get_event_coordinates(e)
         lats.append(float(lat))
         lons.append(float(lon))
-        score = float(e.get("risk_score_0to100") or 0)
+        try:
+            score = float(e.get("risk_score_0to100") or 0)
+        except (ValueError, TypeError):
+            _logger.warning("Invalid risk_score_0to100 for event %s", e.get("event_id"))
+            score = 0.0
         scores.append(score)
         titles.append((e.get("title") or "").strip() or "—")
         regions.append((e.get("geo_region") or "").strip() or "—")
-        exposures.append(round(float(e.get("exposure_usd_est") or 0), 0))
+        try:
+            exposures.append(round(float(e.get("exposure_usd_est") or 0), 0))
+        except (ValueError, TypeError):
+            exposures.append(0.0)
 
     fig = go.Figure(
         go.Scattergeo(
@@ -377,7 +446,11 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
     severity_band = str(event.get("severity_band") or "Medium")
     sev_color = _SEVERITY_COLORS.get(severity_band, "#888")
     sev_bg = _SEVERITY_BG.get(severity_band, "#f8fafc")
-    score = float(event.get("risk_score_0to100") or 0)
+    try:
+        score = float(event.get("risk_score_0to100") or 0)
+    except (ValueError, TypeError):
+        _logger.warning("Invalid risk_score_0to100 for event %s", event.get("event_id"))
+        score = 0.0
     title = _html.escape(str(event.get("title") or "Untitled Event"))
     url = str(event.get("article_url") or "#")
     disruption = str(event.get("disruption_type") or "Unknown Type")
@@ -385,12 +458,24 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
     region = str(event.get("geo_region") or "")
     delay_days = int(event.get("estimated_delay_days") or 0)
     published_at = str(event.get("published_at") or "")
+    ingested_at = str(event.get("ingested_at") or "")
 
     # Date
     try:
         date_str = pd.to_datetime(published_at).strftime("%b %d, %Y")
     except Exception:
         date_str = published_at[:10] if published_at else "—"
+
+    # NEW badge: event ingested within the last 48 hours
+    is_new = False
+    if ingested_at:
+        try:
+            from datetime import datetime, timedelta, timezone
+            ingested_dt = pd.to_datetime(ingested_at, utc=True)
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+            is_new = ingested_dt.to_pydatetime() >= cutoff
+        except Exception:
+            pass
 
     # Location — drop "Unknown" tokens
     loc_parts = [p for p in [country, region] if p and p.lower() not in ("unknown", "")]
@@ -440,7 +525,8 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;">'
         f'<div style="flex:1;min-width:0;">'
         f'<span style="background:rgba(255,255,255,0.08);color:#94a3b8;font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:9px;vertical-align:middle;">#{rank}</span>'
-        f'<a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
+        + (f'<span style="background:#16a34a;color:#fff;font-size:0.58rem;font-weight:800;padding:2px 7px;border-radius:4px;margin-right:9px;vertical-align:middle;letter-spacing:0.06em;">NEW</span>' if is_new else "")
+        + f'<a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
         f'</div>'
         f'<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">'
         f'<span style="background:{sev_color};color:#fff;font-size:0.63rem;font-weight:800;padding:4px 11px;border-radius:4px;letter-spacing:0.07em;white-space:nowrap;">{_sev}</span>'

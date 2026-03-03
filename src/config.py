@@ -1,7 +1,10 @@
 """App configuration."""
+
 from __future__ import annotations
 
 import os
+import re
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -43,6 +46,9 @@ COUNTRY_MAP = {
     "usa": ("United States", "North America"),
     "u.s.a.": ("United States", "North America"),
     "american": ("United States", "North America"),
+    "trump": ("United States", "North America"),
+    "scotus": ("United States", "North America"),
+    "white house": ("United States", "North America"),
     "canada": ("Canada", "North America"),
     "canadian": ("Canada", "North America"),
     "mexico": ("Mexico", "North America"),
@@ -205,6 +211,16 @@ DISRUPTION_TRIGGERS = [
     "bankruptcy",
     "regulatory",
     "recall",
+    # Capacity / restructuring signals
+    "restructur",
+    "job cut",
+    "layoff",
+    "production cut",
+    "capacity cut",
+    "plant clos",
+    "warn",
+    "risk",
+    "impact",
 ]
 NEGATIVE_KEYWORDS = [
     "review",
@@ -245,11 +261,23 @@ def _get_groq_api_key() -> Optional[str]:
         root = Path(__file__).resolve().parents[1]
         secrets_file = root / ".streamlit" / "secrets.toml"
         if secrets_file.is_file():
-            text = secrets_file.read_text(encoding="utf-8")
-            import re
-            m = re.search(r'GROQ_API_KEY\s*=\s*["\']([^"\']+)["\']', text)
-            if m and m.group(1).strip():
-                return m.group(1).strip()
+            if sys.version_info >= (3, 11):
+                import tomllib
+                data = tomllib.loads(secrets_file.read_text(encoding="utf-8"))
+            else:
+                try:
+                    import tomli as tomllib  # type: ignore
+                    data = tomllib.loads(secrets_file.read_text(encoding="utf-8"))
+                except ImportError:
+                    # tomli not available — fall back to regex for Python < 3.11
+                    text = secrets_file.read_text(encoding="utf-8")
+                    m = re.search(r'GROQ_API_KEY\s*=\s*["\']([^"\']+)["\']', text)
+                    if m and m.group(1).strip():
+                        return m.group(1).strip()
+                    data = {}
+            key = data.get("GROQ_API_KEY") or (data.get("groq") or {}).get("api_key")
+            if isinstance(key, str) and key.strip():
+                return key.strip()
     except Exception:
         pass
     return None
@@ -258,7 +286,18 @@ def _get_groq_api_key() -> Optional[str]:
 class AppConfig:
     """Configuration for the application."""
 
-    __slots__ = ("project_root", "db_path", "db_url", "rss_urls", "retention_days", "enriched_retention_days", "source_weights", "groq_api_key", "groq_model", "refresh_interval_hours")
+    __slots__ = (
+        "project_root",
+        "db_path",
+        "db_url",
+        "rss_urls",
+        "retention_days",
+        "enriched_retention_days",
+        "source_weights",
+        "groq_api_key",
+        "groq_model",
+        "refresh_interval_hours",
+    )
 
     def __init__(
         self,
@@ -282,7 +321,12 @@ class AppConfig:
         object.__setattr__(self, "source_weights", source_weights)
         object.__setattr__(self, "groq_api_key", groq_api_key or _get_groq_api_key())
         object.__setattr__(self, "groq_model", os.environ.get("GROQ_MODEL") or groq_model)
-        object.__setattr__(self, "refresh_interval_hours", int(os.environ.get("REFRESH_INTERVAL_HOURS") or refresh_interval_hours))
+        _env_hours = os.environ.get("REFRESH_INTERVAL_HOURS")
+        try:
+            _hours = int(_env_hours) if _env_hours else refresh_interval_hours
+        except ValueError:
+            _hours = refresh_interval_hours
+        object.__setattr__(self, "refresh_interval_hours", _hours)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("AppConfig is immutable")
@@ -291,7 +335,7 @@ class AppConfig:
 def get_config(project_root: Optional[Path] = None) -> AppConfig:
     """Build the default configuration."""
 
-    root = (project_root or Path(__file__).resolve().parents[1]).resolve()
+    root = project_root or Path(__file__).resolve().parents[1]
     data_dir = (root / "data").resolve()
     db_url = (
         _get_secret_db_url()
@@ -306,19 +350,20 @@ def get_config(project_root: Optional[Path] = None) -> AppConfig:
         groq_api_key=None,
         groq_model="llama-3.1-8b-instant",
         rss_urls=(
-            "https://news.google.com/rss/search?q=automotive%20supply%20chain%20disruption&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=auto%20plant%20shutdown%20strike&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=automotive%20semiconductor%20shortage&hl=en-US&gl=US&ceid=US:en",
+            # Direct industry sources with full article bodies (replacing Google News redirect feeds)
+            "https://www.supplychaindive.com/feeds/news/",
+            "https://www.dcvelocity.com/rss",
+            "https://www.globaltrademag.com/feed/",
             "https://www.automotiveworld.com/feed/",
             "https://www.just-auto.com/feed/",
             "https://www.freightwaves.com/feed",
         ),
         retention_days=45,
-        enriched_retention_days=365,
+        enriched_retention_days=730,
         source_weights={
-            "https://news.google.com/rss/search?q=automotive%20supply%20chain%20disruption&hl=en-US&gl=US&ceid=US:en": 0.7,
-            "https://news.google.com/rss/search?q=auto%20plant%20shutdown%20strike&hl=en-US&gl=US&ceid=US:en": 0.7,
-            "https://news.google.com/rss/search?q=automotive%20semiconductor%20shortage&hl=en-US&gl=US&ceid=US:en": 0.7,
+            "https://www.supplychaindive.com/feeds/news/": 0.8,
+            "https://www.dcvelocity.com/rss": 0.7,
+            "https://www.globaltrademag.com/feed/": 0.7,
             "https://www.automotiveworld.com/feed/": 0.75,
             "https://www.just-auto.com/feed/": 0.7,
             "https://www.freightwaves.com/feed": 0.6,

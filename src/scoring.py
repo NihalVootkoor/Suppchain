@@ -44,9 +44,19 @@ def estimate_exposure_usd(extraction: LLMExtraction) -> float:
 
 
 def build_enriched_event(article: RawArticle, extraction: LLMExtraction) -> EnrichedEvent:
-    """Combine raw article + extraction into an enriched event."""
+    """Combine raw article + extraction into an enriched event.
 
-    risk_score = compute_risk_score(extraction)
+    The raw risk score is weighted by source reliability: feeds with higher
+    source_weight (max 0.8 for Supply Chain Dive) receive full score; lower-
+    reliability feeds are discounted proportionally.
+    """
+
+    base_score = compute_risk_score(extraction)
+    # Apply source reliability weight: normalize to max feed weight (0.8).
+    # This discounts less authoritative sources without zeroing them out.
+    _MAX_SOURCE_WEIGHT = 0.8
+    weight = float(article.source_weight or _MAX_SOURCE_WEIGHT)
+    risk_score = round(min(100.0, base_score * (weight / _MAX_SOURCE_WEIGHT)), 2)
     exposure_est = estimate_exposure_usd(extraction)
     now = datetime.now(timezone.utc)
     return EnrichedEvent(

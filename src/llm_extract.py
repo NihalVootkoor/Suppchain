@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.config import (
     AUTO_TERMS,
@@ -27,9 +27,9 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 
-def _find_entities(text: str, vocab: List[str], limit: int = 12) -> List[str]:
+def _find_entities(text: str, vocab: list[str], limit: int = 12) -> list[str]:
     t = _norm(text)
-    hits: List[str] = []
+    hits: list[str] = []
     for token in vocab:
         value = token.lower().strip()
         if not value:
@@ -41,7 +41,7 @@ def _find_entities(text: str, vocab: List[str], limit: int = 12) -> List[str]:
             if value in t:
                 hits.append(token)
     seen = set()
-    out: List[str] = []
+    out: list[str] = []
     for hit in hits:
         key = hit.lower()
         if key in seen:
@@ -53,9 +53,9 @@ def _find_entities(text: str, vocab: List[str], limit: int = 12) -> List[str]:
     return out
 
 
-def _extract_geo(text: str) -> Tuple[str, str, str]:
+def _extract_geo(text: str) -> tuple[str, str, str]:
     t = _norm(text)
-    matches: List[Tuple[str, str]] = []
+    matches: list[tuple[str, str]] = []
     for key, (country, region) in COUNTRY_MAP.items():
         if re.search(rf"\b{re.escape(key)}\b", t):
             matches.append((country, region))
@@ -65,7 +65,7 @@ def _extract_geo(text: str) -> Tuple[str, str, str]:
 
     country, region = matches[0]
     geo_conf = "Medium"
-    for trig in DISRUPTION_TRIGGERS[:40]:
+    for trig in DISRUPTION_TRIGGERS:
         if not trig:
             continue
         if re.search(rf"{re.escape(trig)}.{0,40}\b{re.escape(country.lower())}\b", t):
@@ -111,7 +111,7 @@ def _classify_pestel(disruption_type: str) -> str:
     return mapping.get(disruption_type, "Operational")
 
 
-def _severity_signals(text: str, disruption_type: str) -> Dict[str, Any]:
+def _severity_signals(text: str, disruption_type: str) -> dict[str, Any]:
     t = _norm(text)
 
     # Impact: severity of the production/supply effect
@@ -174,7 +174,7 @@ def _severity_signals(text: str, disruption_type: str) -> Dict[str, Any]:
     }
 
 
-def _estimate_delay_days(text: str, disruption_type: str) -> Tuple[int, str, str]:
+def _estimate_delay_days(text: str, disruption_type: str) -> tuple[int, str, str]:
     t = _norm(text)
     match = re.search(r"\b(\d{1,3})\s*(day|days|week|weeks|month|months)\b", t)
     if match:
@@ -205,8 +205,8 @@ def _estimate_delay_days(text: str, disruption_type: str) -> Tuple[int, str, str
     )
 
 
-def _component_criticality(components: List[str]) -> str:
-    joined = " ".join([c.lower() for c in components])
+def _component_criticality(components: list[str]) -> str:
+    joined = " ".join(c.lower() for c in components)
     if any(k in joined for k in ["semiconductor", "chip", "ecu", "battery", "lithium", "cathode", "anode"]):
         return "high"
     if any(k in joined for k in ["wiring harness", "steel", "aluminum", "motor"]):
@@ -214,7 +214,7 @@ def _component_criticality(components: List[str]) -> str:
     return "low"
 
 
-def _should_reject_as_not_event(text: str) -> Optional[str]:
+def _should_reject_as_not_event(text: str) -> str | None:
     t = _norm(text)
     if any(k in t for k in NEGATIVE_KEYWORDS):
         return "Consumer/review content"
@@ -226,12 +226,12 @@ def _should_reject_as_not_event(text: str) -> Optional[str]:
 def _make_summary(
     disruption_type: str,
     geo_country: str,
-    oems: List[str],
-    suppliers: List[str],
-    components: List[str],
+    oems: list[str],
+    suppliers: list[str],
+    components: list[str],
     delay_days: int,
 ) -> str:
-    parts: List[str] = []
+    parts: list[str] = []
     if disruption_type != "Other":
         parts.append(disruption_type)
     if geo_country and geo_country != "Unknown":
@@ -268,10 +268,10 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
             "estimated_delay_days": 0,
             "delay_confidence": "Low",
             "delay_rationale": reject_reason,
-        "oem_entities": [],
-        "supplier_entities": [],
-        "component_entities": [],
-        "component_criticality": "low",
+            "oem_entities": [],
+            "supplier_entities": [],
+            "component_entities": [],
+            "component_criticality": "low",
             "llm_validation_passed": False,
             "rejected_reason": reject_reason,
         }
@@ -284,8 +284,8 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
     if risk_category not in RISK_CATEGORIES:
         risk_category = "Operational"
 
-    risks_identified: Optional[str] = None
-    groq_geo_country: Optional[str] = None
+    risks_identified: str | None = None
+    groq_geo_country: str | None = None
     if disruption_type == "Other":
         config = get_config()
         if config.groq_api_key:
@@ -303,7 +303,7 @@ def extract_structured_event(article: RawArticle) -> LLMExtraction:
                 groq_geo_country = groq_result.get("geo_country")
 
     geo_country, geo_region, geo_conf = _extract_geo(text)
-    if geo_country == "Unknown" and groq_geo_country:
+    if geo_country == "Unknown" and groq_geo_country is not None:
         _gc = str(groq_geo_country).strip()
         if _gc and _gc.lower() not in ("null", "none", "unknown", ""):
             geo_country = _gc

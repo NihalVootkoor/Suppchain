@@ -8,12 +8,12 @@ from typing import Any, Optional
 
 from src.config import DISRUPTION_TYPES, GEO_REGIONS, RISK_CATEGORIES
 
-DISRUPTION_LIST = ", ".join(DISRUPTION_TYPES)
-RISK_LIST = ", ".join(RISK_CATEGORIES)
-GEO_REGION_LIST = ", ".join(r for r in GEO_REGIONS if r != "Unknown")
+_DISRUPTION_LIST = ", ".join(DISRUPTION_TYPES)
+_RISK_LIST = ", ".join(RISK_CATEGORIES)
+_GEO_REGION_LIST = ", ".join(r for r in GEO_REGIONS if r != "Unknown")
 
 
-def _get_client(api_key: Optional[str]):
+def _get_client(api_key: Optional[str]) -> Optional[Any]:
     if not api_key:
         return None
     try:
@@ -21,6 +21,13 @@ def _get_client(api_key: Optional[str]):
         return Groq(api_key=api_key)
     except Exception:
         return None
+
+
+def _strip_fences(raw: str) -> str:
+    """Strip markdown code fences that LLMs sometimes wrap JSON in."""
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    return re.sub(r"\s*```\s*$", "", raw)
 
 
 def classify_disruption_and_risks(
@@ -38,8 +45,8 @@ def classify_disruption_and_risks(
         return None
     prompt = f"""You are an expert in automotive supply chain risk. Classify this news text and extract risks.
 
-Allowed disruption_type (pick exactly one): {DISRUPTION_LIST}
-Allowed risk_category (pick exactly one): {RISK_LIST}
+Allowed disruption_type (pick exactly one): {_DISRUPTION_LIST}
+Allowed risk_category (pick exactly one): {_RISK_LIST}
 
 Text (title + summary):
 ---
@@ -64,10 +71,7 @@ If the text is about a specific location, logistics, or regional disruption but 
             model=model,
             temperature=0.2,
         )
-        raw = (resp.choices[0].message.content or "").strip()
-        # Strip markdown code block if present
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```\s*$", "", raw)
+        raw = _strip_fences((resp.choices[0].message.content or "").strip())
         out = json.loads(raw)
         disruption = out.get("disruption_type") or "Other"
         if disruption not in DISRUPTION_TYPES:
@@ -102,8 +106,8 @@ def classify_event_fields(
         return None
     prompt = f"""You are an expert in automotive supply chain risk. Classify this news article.
 
-Allowed disruption_type (pick exactly one): {DISRUPTION_LIST}
-Allowed geo_region (pick exactly one): {GEO_REGION_LIST}, Unknown
+Allowed disruption_type (pick exactly one): {_DISRUPTION_LIST}
+Allowed geo_region (pick exactly one): {_GEO_REGION_LIST}, Unknown
 
 Title: {title}
 Summary: {summary[:2000]}
@@ -129,9 +133,7 @@ Classification rules:
             model=model,
             temperature=0.1,
         )
-        raw = (resp.choices[0].message.content or "").strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```\s*$", "", raw)
+        raw = _strip_fences((resp.choices[0].message.content or "").strip())
         out = json.loads(raw)
 
         disruption = out.get("disruption_type") or "Other"
@@ -199,14 +201,12 @@ Give 3–5 specific actions (immediate, near-term, longer-term). Do not invent f
             model=model,
             temperature=0.3,
         )
-        raw = (resp.choices[0].message.content or "").strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```\s*$", "", raw)
+        raw = _strip_fences((resp.choices[0].message.content or "").strip())
         out = json.loads(raw)
         desc = out.get("mitigation_description") or "Prioritize supply continuity and monitor impact."
         actions = out.get("mitigation_actions")
-        if not isinstance(actions, list):
-            actions = [desc]
+        if not isinstance(actions, list) or not actions:
+            return None
         return {"mitigation_description": desc, "mitigation_actions": [str(a) for a in actions[:6]]}
     except Exception:
         return None

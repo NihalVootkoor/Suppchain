@@ -185,7 +185,7 @@ class TestFilters:
             summary="Test drive of the new Toyota. MSRP $45,000.",
         )
         result = hard_filter(article)
-        assert not result.is_reliable if hasattr(result, 'is_reliable') else not result.is_relevant
+        assert not result.is_relevant
 
     def test_filter_articles_returns_tuple(self):
         articles = [
