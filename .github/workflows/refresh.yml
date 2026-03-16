@@ -2,7 +2,7 @@ name: Refresh pipeline
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 8 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -23,4 +23,4 @@ jobs:
           pip install -r requirements.txt
       - name: Run refresh
         run: |
-          python scripts/refresh_pipeline.py --log-json --interval-hours 3
+          python scripts/refresh_pipeline.py --log-json --interval-hours 24
