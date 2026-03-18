@@ -133,7 +133,7 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
     st.markdown(
         """
         <style>
-        h1 { font-size: 3rem !important; font-weight: 700 !important; }
+        h1 { font-size: 1.6rem !important; font-weight: 700 !important; }
         [data-testid="stSidebarNavLink"] p,
         [data-testid="stSidebarNavLink"] span {
             font-size: 1.25rem !important;
@@ -224,7 +224,10 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         f"Currently displaying {len(filtered)} events across "
         f"{len(selected_categories)} categories in {len(selected_regions)} regions"
     )
-    st.sidebar.caption(status_line)
+    st.sidebar.markdown(
+        f"<span style='color: #2980b9; font-size: 0.8rem;'>{status_line}</span>",
+        unsafe_allow_html=True,
+    )
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
     st.sidebar.markdown(
         "<div style='margin-top: 12px;'>Built by Nihal Vootkoor &nbsp;·&nbsp; <strong>DEMO</strong></div>",
