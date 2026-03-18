@@ -130,8 +130,59 @@ def inject_full_width_css() -> None:
 
 def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, object]], bool]:
     """Render global sidebar controls."""
+    st.markdown(
+        """
+        <style>
+        h1 { font-size: 3rem !important; font-weight: 700 !important; }
+        [data-testid="stSidebarNavLink"] p,
+        [data-testid="stSidebarNavLink"] span {
+            font-size: 1.25rem !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stSidebarNavLink"] {
+            padding-top: 0.6rem !important;
+            padding-bottom: 0.6rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     config = get_config()
+
+    # ── Filters ───────────────────────────────────────────────────────────────
+    dates = [parse_datetime(str(item["published_at"])).date() for item in events]
+    start_default, end_default = _default_date_range(dates)
+
+    with st.sidebar.expander("Filters", expanded=False):
+        date_value = st.date_input("Date range", (start_default, end_default))
+        if isinstance(date_value, tuple) and len(date_value) == 2:
+            start, end = date_value
+        else:
+            st.warning("Select a start and end date to apply the range.")
+            start, end = start_default, end_default
+        if start > end:
+            st.warning("Start date must be before end date.")
+            start, end = start_default, end_default
+        categories = sorted({str(item["risk_category"]) for item in events})
+        selected_categories = st.multiselect(
+            "Categories", categories, default=categories
+        )
+        regions = sorted({str(item["geo_region"]) for item in events})
+        selected_regions = st.multiselect("Regions", regions, default=regions)
+        severity = st.slider("Severity", 0.0, 100.0, (0.0, 100.0))
+
+    filtered = filter_events(
+        events,
+        start=start,
+        end=end,
+        categories=tuple(selected_categories),
+        regions=tuple(selected_regions),
+        severity_range=severity,
+    )
+
+    # ── Controls (bottom) ─────────────────────────────────────────────────────
+    st.sidebar.markdown("---")
     st.sidebar.header("Controls")
     # Skip auto-refresh when using Supabase (Cloud) to avoid DB statement timeouts
     if not config.db_url and auto_refresh_if_due(config):
@@ -141,12 +192,21 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
     if last_refresh:
         try:
             last_dt = parse_datetime(last_refresh)
-            st.sidebar.caption(f"Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}")
+            st.sidebar.markdown(
+                f"<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}</span>",
+                unsafe_allow_html=True,
+            )
         except Exception as _exc:
             _logger.warning("Failed to parse last_refresh_at %r: %s", last_refresh, _exc)
-            st.sidebar.caption(f"Last refresh: {last_refresh[:16] if last_refresh else '—'}")
+            st.sidebar.markdown(
+                f"<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: {last_refresh[:16] if last_refresh else '—'}</span>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.sidebar.caption("Last refresh: never")
+        st.sidebar.markdown(
+            "<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: never</span>",
+            unsafe_allow_html=True,
+        )
     if refresh_clicked:
         try:
             run_pipeline(config)
@@ -159,39 +219,17 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
             st.sidebar.success("Refresh complete.")
         except Exception as exc:
             st.sidebar.error(f"Refresh failed: {exc}")
-    dates = [parse_datetime(str(item["published_at"])).date() for item in events]
-    start_default, end_default = _default_date_range(dates)
-    date_value = st.sidebar.date_input("Date range", (start_default, end_default))
-    if isinstance(date_value, tuple) and len(date_value) == 2:
-        start, end = date_value
-    else:
-        st.sidebar.warning("Select a start and end date to apply the range.")
-        start, end = start_default, end_default
-    if start > end:
-        st.sidebar.warning("Start date must be before end date.")
-        start, end = start_default, end_default
-    categories = sorted({str(item["risk_category"]) for item in events})
-    selected_categories = st.sidebar.multiselect(
-        "Categories", categories, default=categories
-    )
-    regions = sorted({str(item["geo_region"]) for item in events})
-    selected_regions = st.sidebar.multiselect("Regions", regions, default=regions)
-    severity = st.sidebar.slider("Severity", 0.0, 100.0, (0.0, 100.0))
-    filtered = filter_events(
-        events,
-        start=start,
-        end=end,
-        categories=tuple(selected_categories),
-        regions=tuple(selected_regions),
-        severity_range=severity,
-    )
+
     status_line = (
         f"Currently displaying {len(filtered)} events across "
         f"{len(selected_categories)} categories in {len(selected_regions)} regions"
     )
     st.sidebar.caption(status_line)
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
-    st.sidebar.caption("Built by Nihal Vootkoor")
+    st.sidebar.markdown(
+        "<div style='margin-top: 12px;'>Built by Nihal Vootkoor &nbsp;·&nbsp; <strong>DEMO</strong></div>",
+        unsafe_allow_html=True,
+    )
     return filtered, show_debug
 
 

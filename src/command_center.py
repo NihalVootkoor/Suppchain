@@ -319,6 +319,25 @@ def _render_severity_trend(events: list[dict]) -> None:
         annotation_position="right",
         annotation_font=dict(color="#c0392b", size=9),
     )
+    # Legend-only dummy traces for threshold lines
+    fig.add_trace(
+        go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            name="High Threshold (70)",
+            line=dict(color="#e67e22", width=1, dash="dash"),
+            showlegend=True,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            name="Critical Threshold (85)",
+            line=dict(color="#c0392b", width=1, dash="dash"),
+            showlegend=True,
+        )
+    )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -576,6 +595,15 @@ def render_command_center() -> None:
     """Render the Command Center — KPIs, charts, and world map."""
     config = get_config()
     st.title("Command Center")
+    st.markdown(
+        "This dashboard gives you a real-time view of risks affecting the global automotive supply chain. "
+        "It pulls in live data from global news feeds, scores each event by severity, and surfaces the issues "
+        "most likely to impact your suppliers.\n\n"
+        "**How to use it:** Use the sidebar to view \"All Events\" and \"AI-Powered Mitigation\" for high risk events. "
+        "Command Center provides an at a glance view with KPI cards at the top. "
+        "The charts below break down risk trends over time and by category. "
+        "Scroll down to the world map to see where risks are concentrated geographically."
+    )
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:

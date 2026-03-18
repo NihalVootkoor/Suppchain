@@ -31,16 +31,16 @@ def main() -> None:
         return
 
     # ── Quick-filter chips ────────────────────────────────────────────────────
-    col_crit, col_new, col_export, _ = st.columns([1, 1, 1, 4])
-    with col_crit:
-        critical_only = st.checkbox("Critical Only", value=False)
+    col_new, col_high, col_export, _ = st.columns([1, 1, 1, 4])
     with col_new:
         new_this_week = st.checkbox("New This Week", value=False)
+    with col_high:
+        high_only = st.checkbox("High Severity", value=False)
 
     # Apply quick filters
     display_events = filtered
-    if critical_only:
-        display_events = [e for e in display_events if e.get("severity_band") == "Critical"]
+    if high_only:
+        display_events = [e for e in display_events if e.get("severity_band") == "High"]
     if new_this_week:
         week_ago = date.today() - timedelta(days=7)
         display_events = [
