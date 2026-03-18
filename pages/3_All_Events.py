@@ -9,7 +9,6 @@ import streamlit as st
 from src.config import get_config
 from src.date_utils import parse_datetime
 from src.ui_utils import (
-    inject_full_width_css,
     load_events,
     render_debug_panel,
     render_events_table,
@@ -19,7 +18,6 @@ from src.ui_utils import (
 
 def main() -> None:
     """Render the All Events page."""
-    inject_full_width_css()
     config = get_config()
     st.title("All Events")
     events = load_events(config.db_path)

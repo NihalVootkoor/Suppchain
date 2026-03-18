@@ -100,11 +100,11 @@ def _default_date_range(dates: Iterable[date]) -> tuple[date, date]:
 
 
 def inject_full_width_css() -> None:
-    """Inject CSS so main content uses full viewport width (call once per page)."""
+    """Inject all global CSS — call once at app startup before any page renders."""
     st.markdown(
         """
         <style>
-        /* Force full-width layout: override Streamlit's centered max-width */
+        /* ── Full-width layout ── */
         section.main .block-container,
         .main .block-container,
         div[data-testid="stAppViewContainer"] main .block-container,
@@ -116,24 +116,18 @@ def inject_full_width_css() -> None:
             padding-left: 2rem !important;
             padding-right: 2rem !important;
         }
-        /* Wrapper that Streamlit may add */
         section.main > div {
             max-width: 100% !important;
             width: 100% !important;
         }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-
-def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, object]], bool]:
-    """Render global sidebar controls."""
-    st.markdown(
-        """
-        <style>
+        /* ── Reduce top gap ── */
+        .block-container,
+        div[data-testid="stMainBlockContainer"] {
+            padding-top: 2rem !important;
+        }
+        /* ── Page titles ── */
         h1 { font-size: 1.6rem !important; font-weight: 700 !important; }
+        /* ── Sidebar nav links ── */
         [data-testid="stSidebarNavLink"] p,
         [data-testid="stSidebarNavLink"] span {
             font-size: 1.25rem !important;
@@ -148,6 +142,10 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         unsafe_allow_html=True,
     )
 
+
+
+def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, object]], bool]:
+    """Render global sidebar controls."""
     config = get_config()
 
     # ── Filters ───────────────────────────────────────────────────────────────
