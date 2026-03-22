@@ -45,6 +45,24 @@ AUTOMOTIVE_ANCHORS: tuple[str, ...] = tuple(
             "trucker",
             "trucking",
             "fleet",
+            # Memory chips — DRAM shortage articles may not use "chip" or "semiconductor"
+            "dram",
+            "memory chip",
+            "hbm",
+            # Maritime — Strait of Hormuz / tanker crisis articles
+            "vessel",
+            "tanker",
+            "maritime",
+            # Parts / supplier articles that reference parts without naming an OEM
+            "auto part",
+            "auto parts",
+            "parts supplier",
+            "tier 1",
+            "tier-1",
+            "tier one",
+            # Insolvency articles may reference "auto supplier" without OEM name
+            "auto supplier",
+            "car supplier",
             *[oem.lower() for oem in OEMS],
         }
     )

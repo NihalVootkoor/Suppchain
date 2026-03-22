@@ -50,15 +50,20 @@ _FALLBACK_ACTIONS: dict[str, list[str]] = {
         "Activate emergency alternate sourcing protocols for critical parts.",
         "Adjust production schedules and alert downstream OEM partners.",
     ],
-    "Port Congestion": [
+    "Logistics Disruption": [
         "Re-route shipments through alternate ports or intermodal channels.",
         "Accelerate customs clearance for all critical in-transit inventory.",
         "Increase safety stock levels at key regional distribution centers.",
     ],
-    "Export Restriction": [
+    "Trade Restriction": [
         "Engage trade counsel to assess full sanction or tariff exposure.",
         "Identify alternate country-of-origin sourcing for restricted materials.",
         "Initiate compliance review of all affected SKUs and HS codes.",
+    ],
+    "Capacity Constraint": [
+        "Confirm output reduction scope and estimated recovery timeline with supplier.",
+        "Activate alternate sourcing and increase safety stock for affected components.",
+        "Adjust production schedules and notify downstream OEM planning teams.",
     ],
     "Cyberattack": [
         "Conduct immediate cybersecurity status check with all affected suppliers.",
@@ -341,11 +346,11 @@ def _render_severity_trend(events: list[dict]) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def _render_pestel_chart(events: list[dict]) -> None:
-    """PESTEL category breakdown — horizontal Plotly bar chart."""
+def _render_category_chart(events: list[dict]) -> None:
+    """SC risk category breakdown — horizontal Plotly bar chart."""
     counts = category_breakdown(events)
     if not counts:
-        st.info("No PESTEL data available.")
+        st.info("No category data available.")
         return
     df = pd.DataFrame([{"category": k, "count": v} for k, v in counts.items()])
     df = df.sort_values("count", ascending=True)
@@ -624,9 +629,9 @@ def render_command_center() -> None:
         st.caption("Average daily risk score across all active events.")
         _render_severity_trend(filtered)
     with col_r:
-        st.markdown("**PESTEL Category Breakdown**")
-        st.caption("Event count by PESTEL risk category.")
-        _render_pestel_chart(filtered)
+        st.markdown("**Risk Category Breakdown**")
+        st.caption("Event count by supply chain risk category.")
+        _render_category_chart(filtered)
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
     st.markdown("**World Risk Map**")

@@ -71,15 +71,18 @@ def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
     avg_delay = _as_float([float(row["estimated_delay_days"]) for row in rows])
     exposure = sum(float(row["exposure_usd_est"]) for row in rows)
 
-    # Highest risk region by average score, excluding Unknown/empty
+    # Highest risk region by average score, excluding Unknown/empty.
+    # Require at least 3 events to avoid a single outlier dominating.
     region_scores: dict[str, list[float]] = {}
     for row in rows:
         region = str(row.get("geo_region") or "").strip()
         if region and region.lower() not in ("unknown", "n/a", ""):
             region_scores.setdefault(region, []).append(float(row["risk_score_0to100"]))
+    qualified = {r: scores for r, scores in region_scores.items() if len(scores) >= 3}
+    candidates = qualified if qualified else region_scores
     highest_risk_region = (
-        max(region_scores, key=lambda r: sum(region_scores[r]) / len(region_scores[r]))
-        if region_scores else ""
+        max(candidates, key=lambda r: sum(candidates[r]) / len(candidates[r]))
+        if candidates else ""
     )
 
     return KpiSummary(

@@ -60,7 +60,7 @@ def event_to_row(event: EnrichedEvent) -> dict[str, object]:
         "exposure_confidence": event.exposure_confidence,
         "exposure_assumptions": event.exposure_assumptions,
         "mitigation_description": event.mitigation_description,
-        "mitigation_actions": json.dumps(event.mitigation_actions or [], ensure_ascii=True),
+        "mitigation_actions": json.dumps(event.mitigation_actions, ensure_ascii=True) if event.mitigation_actions is not None else None,
         "mitigation_generated_at": event.mitigation_generated_at.isoformat()
         if event.mitigation_generated_at
         else None,

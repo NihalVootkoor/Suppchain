@@ -1,6 +1,12 @@
 # Secrets – do not commit
 .env
 .streamlit/secrets.toml
+.mcp.json
+
+# Claude Code local files
+.claude/
+.agents/
+skills-lock.json
 
 # Data / DB
 data/*.db

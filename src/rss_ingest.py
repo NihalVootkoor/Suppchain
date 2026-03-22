@@ -26,9 +26,11 @@ from src.storage import (
     init_db,
     insert_rejections,
     purge_old_enriched_events,
+    purge_old_llm_rejected_events,
     purge_old_raw_articles,
     purge_old_rejected_articles,
     upsert_enriched_events,
+    upsert_llm_rejected_events,
     upsert_raw_articles,
 )
 from src.url_utils import canonicalize_url, hash_id
@@ -241,6 +243,7 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
     insert_rejections(paths, rejection_rows)
     enriched_events: list[EnrichedEvent] = []
     llm_rejections: list[dict[str, object]] = []
+    llm_rejected_events: list[EnrichedEvent] = []
     for article in kept:
         extraction = extract_with_llm(article)
         if not extraction.llm_validation_passed:
@@ -251,9 +254,11 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
+            llm_rejected_events.append(build_enriched_event(article, extraction))
             continue
         enriched_events.append(build_enriched_event(article, extraction))
     insert_rejections(paths, llm_rejections)
+    upsert_llm_rejected_events(paths, [event_to_row(event) for event in llm_rejected_events])
     enriched_events.sort(
         key=lambda event: (event.risk_score_0to100, event.exposure_usd_est, event.published_at),
         reverse=True,
@@ -263,6 +268,7 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
     upsert_enriched_events(paths, [event_to_row(event) for event in enriched_events])
     purge_old_raw_articles(paths, config.retention_days)
     purge_old_enriched_events(paths, config.enriched_retention_days)
+    purge_old_llm_rejected_events(paths, config.enriched_retention_days)
     purge_old_rejected_articles(paths, config.retention_days)
     return {
         "ingested": len(articles),

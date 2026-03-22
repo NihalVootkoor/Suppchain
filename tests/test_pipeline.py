@@ -18,10 +18,11 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.config import COUNTRY_MAP, DISRUPTION_TYPES, GEO_REGIONS, RISK_CATEGORIES, get_config
 from src.date_utils import parse_datetime
 from src.filters import filter_articles, hard_filter
+from src.rss_ingest import parse_rss, ingest_rss, _dedupe_articles
 from src.geo_utils import COUNTRY_COORDINATES, REGION_COORDINATES, get_event_coordinates
 from src.llm_extract import (
     _classify_disruption_type,
-    _classify_pestel,
+    _classify_sc_category,
     _estimate_delay_days,
     _extract_geo,
     _severity_signals,
@@ -142,13 +143,16 @@ class TestConfig:
         assert config.refresh_interval_hours == 24
 
     def test_disruption_types_complete(self):
-        required = {"Labor Strike", "Plant Shutdown", "Port Congestion", "Export Restriction",
-                    "Cyberattack", "Natural Disaster", "Supplier Insolvency", "Regulatory Change", "Other"}
+        required = {"Labor Strike", "Plant Shutdown", "Logistics Disruption", "Trade Restriction",
+                    "Cyberattack", "Natural Disaster", "Supplier Insolvency", "Regulatory Change",
+                    "Capacity Constraint", "Other"}
         assert required == set(DISRUPTION_TYPES)
 
-    def test_risk_categories_pestel(self):
-        pestel = {"Political", "Economic", "Social", "Technological", "Environmental", "Legal", "Operational"}
-        assert pestel == set(RISK_CATEGORIES)
+    def test_risk_categories_sc_taxonomy(self):
+        sc = {"Supply Disruption", "Logistics & Transport", "Geopolitical & Trade",
+              "Natural Disaster & Climate", "Cyber & Technology", "Labor & Social",
+              "Regulatory & Compliance"}
+        assert sc == set(RISK_CATEGORIES)
 
 
 # ── Filters ───────────────────────────────────────────────────────────────────
@@ -220,35 +224,39 @@ class TestLLMExtract:
     def test_classify_disruption_type_natural_disaster(self):
         assert _classify_disruption_type("earthquake flood wildfire damage") == "Natural Disaster"
 
-    def test_classify_disruption_type_port_congestion(self):
-        assert _classify_disruption_type("port congestion container backlog intermodal") == "Port Congestion"
+    def test_classify_disruption_type_logistics_disruption(self):
+        assert _classify_disruption_type("port congestion container backlog intermodal") == "Logistics Disruption"
 
-    def test_classify_disruption_type_export_restriction(self):
-        assert _classify_disruption_type("export ban sanctions tariff") == "Export Restriction"
+    def test_classify_disruption_type_trade_restriction(self):
+        assert _classify_disruption_type("export ban sanctions tariff") == "Trade Restriction"
 
     def test_classify_disruption_type_insolvency(self):
-        assert _classify_disruption_type("bankruptcy insolvency creditor restructuring") == "Supplier Insolvency"
+        assert _classify_disruption_type("bankruptcy insolvency creditor") == "Supplier Insolvency"
 
     def test_classify_disruption_type_regulatory(self):
-        assert _classify_disruption_type("new regulation regulatory compliance rule change") == "Regulatory Change"
+        assert _classify_disruption_type("new regulation rule change government mandate") == "Regulatory Change"
+
+    def test_classify_disruption_type_capacity_constraint(self):
+        assert _classify_disruption_type("production cut capacity reduction idle capacity") == "Capacity Constraint"
 
     def test_classify_disruption_type_other(self):
         assert _classify_disruption_type("some random text without specific triggers") == "Other"
 
-    def test_classify_pestel_mapping(self):
-        assert _classify_pestel("Labor Strike") == "Social"
-        assert _classify_pestel("Cyberattack") == "Technological"
-        assert _classify_pestel("Natural Disaster") == "Environmental"
-        assert _classify_pestel("Export Restriction") == "Political"
-        assert _classify_pestel("Regulatory Change") == "Legal"
-        assert _classify_pestel("Supplier Insolvency") == "Economic"
-        assert _classify_pestel("Port Congestion") == "Operational"
-        assert _classify_pestel("Plant Shutdown") == "Operational"
+    def test_classify_sc_category_mapping(self):
+        assert _classify_sc_category("Labor Strike") == "Labor & Social"
+        assert _classify_sc_category("Cyberattack") == "Cyber & Technology"
+        assert _classify_sc_category("Natural Disaster") == "Natural Disaster & Climate"
+        assert _classify_sc_category("Trade Restriction") == "Geopolitical & Trade"
+        assert _classify_sc_category("Regulatory Change") == "Regulatory & Compliance"
+        assert _classify_sc_category("Supplier Insolvency") == "Supply Disruption"
+        assert _classify_sc_category("Logistics Disruption") == "Logistics & Transport"
+        assert _classify_sc_category("Plant Shutdown") == "Supply Disruption"
+        assert _classify_sc_category("Capacity Constraint") == "Supply Disruption"
 
-    def test_pestel_result_always_in_risk_categories(self):
+    def test_sc_category_always_in_risk_categories(self):
         for dtype in DISRUPTION_TYPES:
-            result = _classify_pestel(dtype)
-            assert result in RISK_CATEGORIES, f"PESTEL result {result!r} not in RISK_CATEGORIES"
+            result = _classify_sc_category(dtype)
+            assert result in RISK_CATEGORIES, f"SC category {result!r} not in RISK_CATEGORIES"
 
     def test_extract_geo_china(self):
         country, region, conf = _extract_geo("tariffs imposed on china exports")
@@ -279,9 +287,9 @@ class TestLLMExtract:
         signals = _severity_signals("production halted completely effective immediately in effect", "Plant Shutdown")
         assert signals["probability_1to5"] >= 4
 
-    def test_severity_signals_export_restriction_time_limited(self):
-        # Export Restriction should have time_sensitivity <= 2
-        signals = _severity_signals("export ban tariffs announced", "Export Restriction")
+    def test_severity_signals_trade_restriction_time_limited(self):
+        # Trade Restriction should have time_sensitivity <= 2 (policy changes are slow-moving)
+        signals = _severity_signals("export ban tariffs announced", "Trade Restriction")
         assert signals["time_sensitivity_1to3"] <= 2
 
     def test_severity_signals_all_in_range(self):
@@ -304,7 +312,7 @@ class TestLLMExtract:
         assert conf == "High"
 
     def test_estimate_delay_days_default(self):
-        days, conf, _ = _estimate_delay_days("no duration mentioned", "Port Congestion")
+        days, conf, _ = _estimate_delay_days("no duration mentioned", "Logistics Disruption")
         assert days == 14
         assert conf == "Low"
 
@@ -368,7 +376,7 @@ class TestScoring:
             geo_country="United States",
             geo_region="North America",
             geo_confidence="Medium",
-            risk_category="Operational",
+            risk_category="Supply Disruption",
             disruption_type="Plant Shutdown",
             impact_1to5=impact,
             probability_1to5=prob,
@@ -459,10 +467,14 @@ class TestSerialization:
         extraction = extract_with_llm(article)
         event = build_enriched_event(article, extraction)
         row = event_to_row(event)
-        # Lists should be stored as JSON strings
-        for key in ("oem_entities", "supplier_entities", "component_entities", "mitigation_actions"):
+        # Entity lists should be stored as JSON strings
+        for key in ("oem_entities", "supplier_entities", "component_entities"):
             assert isinstance(row[key], str)
             json.loads(row[key])  # Should not raise
+        # mitigation_actions is NULL when no mitigation has been generated
+        assert row["mitigation_actions"] is None or (
+            isinstance(row["mitigation_actions"], str) and json.loads(row["mitigation_actions"]) is not None
+        )
 
     def test_row_to_dict_deserializes_lists(self):
         raw = {
@@ -554,14 +566,14 @@ class TestExtractionAccuracy:
         article = _make_article(title=title, summary=summary)
         return extract_structured_event(article)
 
-    def test_china_tariff_is_export_restriction(self):
+    def test_china_tariff_is_trade_restriction(self):
         ext = self._extract(
             "China imposes new export restrictions on automotive components",
             "Chinese government announced tariffs affecting auto part exports to US."
         )
         assert ext.llm_validation_passed
-        assert ext.disruption_type == "Export Restriction"
-        assert ext.risk_category == "Political"
+        assert ext.disruption_type == "Trade Restriction"
+        assert ext.risk_category == "Geopolitical & Trade"
         assert ext.geo_country == "China"
 
     def test_labor_strike_at_ford(self):
@@ -571,7 +583,7 @@ class TestExtractionAccuracy:
         )
         assert ext.llm_validation_passed
         assert ext.disruption_type == "Labor Strike"
-        assert ext.risk_category == "Social"
+        assert ext.risk_category == "Labor & Social"
 
     def test_japan_earthquake_is_natural_disaster(self):
         ext = self._extract(
@@ -580,7 +592,7 @@ class TestExtractionAccuracy:
         )
         assert ext.llm_validation_passed
         assert ext.disruption_type == "Natural Disaster"
-        assert ext.risk_category == "Environmental"
+        assert ext.risk_category == "Natural Disaster & Climate"
         assert ext.geo_country == "Japan"
 
     def test_ransomware_attack_is_cyberattack(self):
@@ -590,7 +602,7 @@ class TestExtractionAccuracy:
         )
         assert ext.llm_validation_passed
         assert ext.disruption_type == "Cyberattack"
-        assert ext.risk_category == "Technological"
+        assert ext.risk_category == "Cyber & Technology"
 
     def test_supplier_bankruptcy_is_insolvency(self):
         ext = self._extract(
@@ -599,7 +611,7 @@ class TestExtractionAccuracy:
         )
         assert ext.llm_validation_passed
         assert ext.disruption_type == "Supplier Insolvency"
-        assert ext.risk_category == "Economic"
+        assert ext.risk_category == "Supply Disruption"
 
     def test_german_factory_is_plant_shutdown(self):
         ext = self._extract(
@@ -636,3 +648,490 @@ class TestExtractionAccuracy:
             ext = extract_structured_event(article)
             if ext.llm_validation_passed:
                 assert ext.geo_country not in ("null", "none", "NULL", "NONE")
+
+
+# ── Mitigation persistence ────────────────────────────────────────────────────
+
+class TestMitigationPersistence:
+    """Verify that upsert_enriched_events preserves existing mitigation on re-process."""
+
+    def _make_event_row(self, event_id: str, mit_desc=None, mit_actions=None) -> dict:
+        from src.serialization import event_to_row
+        from src.scoring import build_enriched_event
+        article = _make_article(
+            title="Toyota Japan plant halted due to strike shutdown",
+            summary="Production stoppage at Toyota Japan plant.",
+            url=f"https://example.com/{event_id}",
+        )
+        from src.llm_extract import extract_with_llm
+        extraction = extract_with_llm(article)
+        # Force llm_validation_passed and inject mitigation
+        from src.models import EnrichedEvent
+        from src.scoring import severity_band, compute_risk_score, estimate_exposure_usd
+        from src.llm_extract import build_event_id
+        now = datetime.now(timezone.utc)
+        event = EnrichedEvent(
+            event_id=event_id,
+            article_url=f"https://example.com/{event_id}",
+            source_name="test", source_weight=0.7,
+            published_at=now, ingested_at=now,
+            title="Toyota Japan plant halted", event_summary="Supply disruption.",
+            dashboard_blurb=None, reason_flagged="test disruption",
+            oem_entities=["Toyota"], supplier_entities=[], component_entities=[],
+            component_criticality="low", risk_category="Supply Disruption",
+            disruption_type="Plant Shutdown", geo_country="Japan",
+            geo_region="East Asia", geo_confidence="High",
+            impact_1to5=4, probability_1to5=4, time_sensitivity_1to3=3,
+            exposure_proxy_1to5=4, severity_confidence="High",
+            risk_score_0to100=79.0, severity_band="High",
+            estimated_delay_days=14, delay_confidence="High",
+            delay_rationale="test", exposure_usd_est=10000000.0,
+            exposure_confidence="High", exposure_assumptions="test",
+            mitigation_description=mit_desc,
+            mitigation_actions=mit_actions,
+            mitigation_generated_at=now if mit_desc else None,
+            llm_validation_passed=True, rejected_reason=None,
+            created_at=now,
+        )
+        return event_to_row(event)
+
+    def test_upsert_preserves_existing_mitigation_on_reprocess(self):
+        """Re-upserting an event without mitigation must NOT overwrite existing mitigation."""
+        paths, tmpdir = _make_db_paths()
+        try:
+            init_db(paths)
+            event_id = "test-evt-001"
+
+            # First insert: event WITH mitigation
+            row_with_mit = self._make_event_row(
+                event_id,
+                mit_desc="Activate emergency sourcing protocols.",
+                mit_actions=["Source alternate suppliers", "Notify procurement team"],
+            )
+            upsert_enriched_events(paths, [row_with_mit])
+
+            # Second upsert: same event WITHOUT mitigation (simulates re-enrichment outside top-3)
+            row_no_mit = self._make_event_row(event_id, mit_desc=None, mit_actions=None)
+            upsert_enriched_events(paths, [row_no_mit])
+
+            # Mitigation should still be present
+            fetched = fetch_enriched_events(paths, limit=10)
+            assert len(fetched) == 1
+            evt = fetched[0]
+            assert evt["mitigation_description"] == "Activate emergency sourcing protocols.", (
+                "Existing mitigation was overwritten by NULL on re-upsert — persistence bug not fixed"
+            )
+        finally:
+            tmpdir.cleanup()
+
+    def test_upsert_updates_mitigation_when_new_value_provided(self):
+        """Upserting with a new non-null mitigation value replaces the old one."""
+        paths, tmpdir = _make_db_paths()
+        try:
+            init_db(paths)
+            event_id = "test-evt-002"
+
+            row_v1 = self._make_event_row(event_id, mit_desc="Old mitigation.", mit_actions=["Old action"])
+            upsert_enriched_events(paths, [row_v1])
+
+            row_v2 = self._make_event_row(event_id, mit_desc="Updated mitigation.", mit_actions=["New action"])
+            upsert_enriched_events(paths, [row_v2])
+
+            fetched = fetch_enriched_events(paths, limit=10)
+            assert fetched[0]["mitigation_description"] == "Updated mitigation."
+        finally:
+            tmpdir.cleanup()
+
+    def test_serialization_stores_null_for_none_mitigation_actions(self):
+        """None mitigation_actions must serialize to SQL NULL, not empty JSON array."""
+        row = self._make_event_row("test-null-001", mit_desc=None, mit_actions=None)
+        assert row["mitigation_actions"] is None, (
+            f"Expected None but got {row['mitigation_actions']!r} — COALESCE fix requires SQL NULL"
+        )
+
+    def test_serialization_stores_json_for_non_null_mitigation_actions(self):
+        """Non-None mitigation_actions must serialize to a JSON string."""
+        row = self._make_event_row("test-json-001", mit_desc="desc", mit_actions=["action1", "action2"])
+        assert row["mitigation_actions"] is not None
+        parsed = json.loads(row["mitigation_actions"])
+        assert parsed == ["action1", "action2"]
+
+
+# ── Mitigation _base_actions ──────────────────────────────────────────────────
+
+class TestBaseActions:
+    """Test that _base_actions uses valid disruption type names and returns useful actions."""
+
+    def _make_event(self, disruption_type: str):
+        from src.models import EnrichedEvent
+        now = datetime.now(timezone.utc)
+        return EnrichedEvent(
+            event_id="test", article_url="http://test.com", source_name="test",
+            source_weight=0.7, published_at=now, ingested_at=now,
+            title="Test", event_summary="Test", dashboard_blurb=None,
+            reason_flagged="test", oem_entities=[], supplier_entities=[],
+            component_entities=[], component_criticality="low",
+            risk_category="Supply Disruption", disruption_type=disruption_type,
+            geo_country="Unknown", geo_region="Unknown", geo_confidence="Low",
+            impact_1to5=2, probability_1to5=2, time_sensitivity_1to3=1,
+            exposure_proxy_1to5=2, severity_confidence="Low",
+            risk_score_0to100=50.0, severity_band="Medium",
+            estimated_delay_days=14, delay_confidence="Low",
+            delay_rationale="test", exposure_usd_est=5000000.0,
+            exposure_confidence="Low", exposure_assumptions="test",
+            mitigation_description=None, mitigation_actions=None,
+            mitigation_generated_at=None, llm_validation_passed=True,
+            rejected_reason=None, created_at=now,
+        )
+
+    def test_base_actions_logistics_disruption_gets_extra_action(self):
+        from src.mitigation import _base_actions
+        event = self._make_event("Logistics Disruption")
+        actions = _base_actions(event)
+        assert len(actions) == 4, "Logistics Disruption should get an extra port/sourcing action"
+
+    def test_base_actions_trade_restriction_gets_extra_action(self):
+        from src.mitigation import _base_actions
+        event = self._make_event("Trade Restriction")
+        actions = _base_actions(event)
+        assert len(actions) == 4, "Trade Restriction should get an extra port/sourcing action"
+
+    def test_base_actions_labor_strike_gets_extra_action(self):
+        from src.mitigation import _base_actions
+        event = self._make_event("Labor Strike")
+        actions = _base_actions(event)
+        assert len(actions) == 4, "Labor Strike should get union communication action"
+
+    def test_base_actions_plant_shutdown_gets_extra_action(self):
+        from src.mitigation import _base_actions
+        event = self._make_event("Plant Shutdown")
+        actions = _base_actions(event)
+        assert len(actions) == 4, "Plant Shutdown should get union communication action"
+
+    def test_base_actions_cyberattack_gets_extra_action(self):
+        from src.mitigation import _base_actions
+        event = self._make_event("Cyberattack")
+        actions = _base_actions(event)
+        assert len(actions) == 4, "Cyberattack should get supplier cybersecurity action"
+
+    def test_base_actions_all_types_return_at_least_3_actions(self):
+        from src.mitigation import _base_actions
+        from src.config import DISRUPTION_TYPES
+        for dt in DISRUPTION_TYPES:
+            actions = _base_actions(self._make_event(dt))
+            assert len(actions) >= 3, f"{dt} returned fewer than 3 actions"
+
+    def test_base_actions_no_invalid_disruption_type_references(self):
+        """Ensure the function uses valid DISRUPTION_TYPES, not stale names."""
+        from src.mitigation import _base_actions
+        import inspect, src.mitigation as m
+        source = inspect.getsource(_base_actions)
+        assert "Port Congestion" not in source, "Stale type 'Port Congestion' still referenced"
+        assert "Export Restriction" not in source, "Stale type 'Export Restriction' still referenced"
+
+
+# ── Config data quality ───────────────────────────────────────────────────────
+
+class TestConfigDataQuality:
+    def test_tier1s_no_duplicates(self):
+        from src.config import TIER1S
+        seen = set()
+        for name in TIER1S:
+            assert name not in seen, f"Duplicate TIER1S entry: '{name}'"
+            seen.add(name)
+
+    def test_oems_no_duplicates(self):
+        from src.config import OEMS
+        seen = set()
+        for name in OEMS:
+            assert name not in seen, f"Duplicate OEMS entry: '{name}'"
+            seen.add(name)
+
+    def test_disruption_types_no_duplicates(self):
+        assert len(DISRUPTION_TYPES) == len(set(DISRUPTION_TYPES))
+
+    def test_risk_categories_no_duplicates(self):
+        assert len(RISK_CATEGORIES) == len(set(RISK_CATEGORIES))
+
+
+# ── RSS parsing ───────────────────────────────────────────────────────────────
+
+RSS_FIXTURE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <item>
+      <title>Toyota plant shutdown in Japan due to strike</title>
+      <link>https://example.com/toyota-strike</link>
+      <description>Workers walked out of Toyota&#39;s main assembly plant.</description>
+      <pubDate>Mon, 20 Mar 2026 08:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Ford workers strike at Michigan plant</title>
+      <link>https://example.com/ford-strike</link>
+      <description>UAW union walkout halts production at Ford Michigan.</description>
+      <pubDate>Mon, 20 Mar 2026 10:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+
+ATOM_FIXTURE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Test Feed</title>
+  <entry>
+    <title>Bosch ransomware cyberattack disrupts production</title>
+    <link rel="alternate" href="https://example.com/bosch-cyber"/>
+    <summary>Ransomware attack hit Bosch causing plant outage.</summary>
+    <published>2026-03-19T12:00:00Z</published>
+  </entry>
+</feed>
+"""
+
+MALFORMED_RSS_FIXTURE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Supply disruption &amp; parts shortage</title>
+      <link>https://example.com/disruption</link>
+      <description>Parts shortage &amp; logistics delay</description>
+      <pubDate>Sun, 19 Mar 2026 06:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>
+"""
+
+
+class TestRSSIngestion:
+    """Tests for RSS feed parsing, Atom parsing, deduplication, and robustness."""
+
+    def test_parse_rss_returns_articles(self):
+        articles = parse_rss(RSS_FIXTURE, source="test-feed", weight=0.8)
+        assert len(articles) == 2
+
+    def test_parse_rss_article_fields(self):
+        articles = parse_rss(RSS_FIXTURE, source="test-feed", weight=0.8)
+        a = articles[0]
+        assert a.title == "Toyota plant shutdown in Japan due to strike"
+        assert a.article_url == "https://example.com/toyota-strike"
+        assert a.source_name == "test-feed"
+        assert a.source_weight == 0.8
+        assert a.article_id  # non-empty
+        assert a.published_at is not None
+        assert a.ingested_at is not None
+
+    def test_parse_rss_published_at_timezone_aware(self):
+        articles = parse_rss(RSS_FIXTURE, source="test-feed", weight=0.8)
+        for article in articles:
+            assert article.published_at.tzinfo is not None, (
+                f"published_at for '{article.title}' must be timezone-aware"
+            )
+
+    def test_parse_rss_ingested_at_is_utc_now(self):
+        before = datetime.now(timezone.utc)
+        articles = parse_rss(RSS_FIXTURE, source="test-feed", weight=0.8)
+        after = datetime.now(timezone.utc)
+        for article in articles:
+            assert before <= article.ingested_at <= after, (
+                "ingested_at must be set to the current UTC time during ingestion"
+            )
+
+    def test_parse_atom_feed(self):
+        articles = parse_rss(ATOM_FIXTURE, source="atom-feed", weight=0.7)
+        assert len(articles) == 1
+        a = articles[0]
+        assert "Bosch" in a.title
+        assert a.article_url == "https://example.com/bosch-cyber"
+        assert a.published_at.tzinfo is not None
+
+    def test_parse_rss_article_id_is_deterministic(self):
+        """Same URL must always produce the same article_id (idempotent ingestion)."""
+        articles1 = parse_rss(RSS_FIXTURE, source="feed-a", weight=0.8)
+        articles2 = parse_rss(RSS_FIXTURE, source="feed-b", weight=0.5)
+        ids1 = {a.article_url: a.article_id for a in articles1}
+        ids2 = {a.article_url: a.article_id for a in articles2}
+        for url in ids1:
+            assert ids1[url] == ids2[url], (
+                f"article_id for {url} changed across parse calls — dedup will break"
+            )
+
+    def test_parse_rss_no_duplicate_article_ids(self):
+        articles = parse_rss(RSS_FIXTURE, source="test-feed", weight=0.8)
+        ids = [a.article_id for a in articles]
+        assert len(ids) == len(set(ids)), "Duplicate article_ids within a single feed parse"
+
+    def test_parse_rss_malformed_entities(self):
+        """Feeds with HTML entities like &amp; must parse without raising."""
+        articles = parse_rss(MALFORMED_RSS_FIXTURE, source="malformed", weight=0.6)
+        assert len(articles) == 1
+        assert "Parts shortage" in articles[0].summary or "disruption" in articles[0].title.lower()
+
+    def test_parse_rss_empty_feed_returns_empty_list(self):
+        empty = '<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>'
+        articles = parse_rss(empty, source="empty", weight=0.5)
+        assert articles == []
+
+    def test_dedupe_articles_removes_duplicates(self):
+        articles = parse_rss(RSS_FIXTURE, source="feed", weight=0.8)
+        doubled = articles + articles  # exact duplicates
+        deduped = _dedupe_articles(doubled)
+        assert len(deduped) == len(articles)
+
+    def test_dedupe_articles_keeps_latest_published(self):
+        """When the same article_id appears twice, the one with the later published_at wins."""
+        base = parse_rss(RSS_FIXTURE, source="feed", weight=0.8)
+        older = base[0]
+        from dataclasses import replace
+        from datetime import timedelta
+        newer = replace(older, published_at=older.published_at + timedelta(hours=1))
+        deduped = _dedupe_articles([older, newer])
+        assert len(deduped) == 1
+        assert deduped[0].published_at == newer.published_at
+
+    def test_ingest_rss_skips_failed_feeds_gracefully(self):
+        """A bad URL must not raise — it must be silently skipped."""
+        articles = ingest_rss(
+            ["https://this-domain-does-not-exist-xyz.invalid/feed"],
+            weights={},
+        )
+        assert isinstance(articles, list)  # no exception; returns empty list
+
+    def test_ingest_rss_source_weight_applied(self):
+        """source_weight from the weights dict must be forwarded to each article."""
+        feed_url = "https://example.com/feed"
+        # We can't hit the network, so test the weight dict wiring via parse_rss directly
+        articles = parse_rss(RSS_FIXTURE, source=feed_url, weight=0.9)
+        for a in articles:
+            assert a.source_weight == 0.9
+
+    def test_parse_rss_source_name_is_url(self):
+        """source_name must be the feed URL so we can trace provenance."""
+        url = "https://www.supplychaindive.com/feeds/news/"
+        articles = parse_rss(RSS_FIXTURE, source=url, weight=0.8)
+        for a in articles:
+            assert a.source_name == url
+
+    def test_parse_rss_content_falls_back_to_summary(self):
+        """content must equal summary when no separate content field is provided."""
+        articles = parse_rss(RSS_FIXTURE, source="feed", weight=0.8)
+        for a in articles:
+            assert a.content == a.summary
+
+
+# ── Scheduling / autonomy ─────────────────────────────────────────────────────
+
+class TestSchedulingAutonomy:
+    """Verify the pipeline's scheduling metadata and interval configuration."""
+
+    def test_config_refresh_interval_is_24h(self):
+        """Default refresh interval must be 24 h for once-daily autonomous runs."""
+        config = get_config()
+        assert config.refresh_interval_hours == 24, (
+            f"Expected 24h daily refresh, got {config.refresh_interval_hours}h"
+        )
+
+    def test_config_refresh_interval_env_override(self):
+        """REFRESH_INTERVAL_HOURS env var must override the default."""
+        import os
+        os.environ["REFRESH_INTERVAL_HOURS"] = "12"
+        try:
+            from src.config import AppConfig
+            from pathlib import Path
+            cfg = AppConfig(
+                project_root=Path("."),
+                db_path=Path("data/app.db"),
+                db_url=None,
+                rss_urls=(),
+                retention_days=45,
+                enriched_retention_days=730,
+                source_weights={},
+                refresh_interval_hours=24,  # default — should be overridden by env
+            )
+            assert cfg.refresh_interval_hours == 12
+        finally:
+            del os.environ["REFRESH_INTERVAL_HOURS"]
+
+    def test_config_refresh_interval_bad_env_falls_back(self):
+        """A non-integer REFRESH_INTERVAL_HOURS must silently fall back to the default."""
+        import os
+        os.environ["REFRESH_INTERVAL_HOURS"] = "not-a-number"
+        try:
+            from src.config import AppConfig
+            from pathlib import Path
+            cfg = AppConfig(
+                project_root=Path("."),
+                db_path=Path("data/app.db"),
+                db_url=None,
+                rss_urls=(),
+                retention_days=45,
+                enriched_retention_days=730,
+                source_weights={},
+                refresh_interval_hours=24,
+            )
+            assert cfg.refresh_interval_hours == 24
+        finally:
+            del os.environ["REFRESH_INTERVAL_HOURS"]
+
+    def test_set_and_get_last_refresh_meta(self):
+        """set_meta_value / get_meta_value must round-trip last_refresh_at."""
+        from src.storage import set_meta_value, get_meta_value, init_db
+        paths, tmpdir = _make_db_paths()
+        try:
+            init_db(paths)
+            ts = datetime.now(timezone.utc).isoformat()
+            set_meta_value(paths, "last_refresh_at", ts)
+            result = get_meta_value(paths, "last_refresh_at")
+            assert result == ts, "last_refresh_at not persisted correctly"
+        finally:
+            tmpdir.cleanup()
+
+    def test_meta_missing_key_returns_none(self):
+        """get_meta_value for a key that has never been set must return None."""
+        from src.storage import get_meta_value, init_db
+        paths, tmpdir = _make_db_paths()
+        try:
+            init_db(paths)
+            assert get_meta_value(paths, "nonexistent_key") is None
+        finally:
+            tmpdir.cleanup()
+
+    def test_meta_upsert_overwrites(self):
+        """Calling set_meta_value twice must overwrite, not duplicate."""
+        from src.storage import set_meta_value, get_meta_value, init_db
+        paths, tmpdir = _make_db_paths()
+        try:
+            init_db(paths)
+            set_meta_value(paths, "last_refresh_at", "2026-03-21T08:00:00+00:00")
+            set_meta_value(paths, "last_refresh_at", "2026-03-22T08:00:00+00:00")
+            result = get_meta_value(paths, "last_refresh_at")
+            assert result == "2026-03-22T08:00:00+00:00"
+        finally:
+            tmpdir.cleanup()
+
+    def test_all_rss_urls_have_weights(self):
+        """Every RSS URL in config must have a corresponding source_weight entry."""
+        config = get_config()
+        for url in config.rss_urls:
+            assert url in config.source_weights, (
+                f"RSS URL has no source_weight: {url}"
+            )
+
+    def test_rss_url_count_matches_weights_count(self):
+        """source_weights must not have orphaned entries not in rss_urls."""
+        config = get_config()
+        rss_set = set(config.rss_urls)
+        for url in config.source_weights:
+            assert url in rss_set, (
+                f"source_weights has orphaned URL not in rss_urls: {url}"
+            )
+
+    def test_all_source_weights_in_valid_range(self):
+        """Every source weight must be in (0, 1]."""
+        config = get_config()
+        for url, weight in config.source_weights.items():
+            assert 0 < weight <= 1.0, (
+                f"source_weight for {url} is {weight} — must be in (0, 1]"
+            )

@@ -9,23 +9,24 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 RiskCategory = Literal[
-    "Political",
-    "Economic",
-    "Social",
-    "Technological",
-    "Environmental",
-    "Legal",
-    "Operational",
+    "Supply Disruption",
+    "Logistics & Transport",
+    "Geopolitical & Trade",
+    "Natural Disaster & Climate",
+    "Cyber & Technology",
+    "Labor & Social",
+    "Regulatory & Compliance",
 ]
 DisruptionType = Literal[
     "Labor Strike",
     "Plant Shutdown",
-    "Port Congestion",
-    "Export Restriction",
+    "Logistics Disruption",
+    "Trade Restriction",
     "Cyberattack",
     "Natural Disaster",
     "Supplier Insolvency",
     "Regulatory Change",
+    "Capacity Constraint",
     "Other",
 ]
 GeoRegion = Literal[

@@ -15,7 +15,7 @@ except Exception:  # pragma: no cover - optional dependency
     psycopg2 = None
     RealDictCursor = None
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 RAW_TABLE_SQL = (
     "CREATE TABLE IF NOT EXISTS raw_articles ("
@@ -45,6 +45,24 @@ ENRICHED_TABLE_SQL = (
 REJECTED_TABLE_SQL = (
     "CREATE TABLE IF NOT EXISTS rejected_articles ("
     "article_url TEXT PRIMARY KEY, reason TEXT NOT NULL, created_at TEXT NOT NULL)"
+)
+LLM_REJECTED_TABLE_SQL = (
+    "CREATE TABLE IF NOT EXISTS llm_rejected_events ("
+    "event_id TEXT PRIMARY KEY, article_url TEXT NOT NULL, source_name TEXT NOT NULL, "
+    "source_weight REAL NOT NULL, published_at TEXT NOT NULL, ingested_at TEXT NOT NULL, "
+    "title TEXT NOT NULL, event_summary TEXT NOT NULL, dashboard_blurb TEXT, "
+    "reason_flagged TEXT NOT NULL, oem_entities TEXT NOT NULL, supplier_entities TEXT NOT NULL, "
+    "component_entities TEXT NOT NULL, component_criticality TEXT NOT NULL, "
+    "risk_category TEXT NOT NULL, disruption_type TEXT NOT NULL, geo_country TEXT NOT NULL, "
+    "geo_region TEXT NOT NULL, geo_confidence TEXT NOT NULL, impact_1to5 INTEGER NOT NULL, "
+    "probability_1to5 INTEGER NOT NULL, time_sensitivity_1to3 INTEGER NOT NULL, "
+    "exposure_proxy_1to5 INTEGER NOT NULL, severity_confidence TEXT NOT NULL, "
+    "risk_score_0to100 REAL NOT NULL, severity_band TEXT NOT NULL, "
+    "estimated_delay_days INTEGER NOT NULL, delay_confidence TEXT NOT NULL, "
+    "delay_rationale TEXT NOT NULL, exposure_usd_est REAL NOT NULL, "
+    "exposure_confidence TEXT NOT NULL, exposure_assumptions TEXT NOT NULL, "
+    "mitigation_description TEXT, mitigation_actions TEXT, mitigation_generated_at TEXT, "
+    "llm_validation_passed INTEGER NOT NULL, rejected_reason TEXT, created_at TEXT NOT NULL)"
 )
 
 
@@ -127,7 +145,7 @@ def init_db(paths: DbPaths) -> None:
                     "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
                 )
                 version = _get_schema_version_pg(cur)
-                if version < SCHEMA_VERSION:
+                if version < 1:
                     cur.execute(RAW_TABLE_SQL)
                     cur.execute(ENRICHED_TABLE_SQL)
                     cur.execute(REJECTED_TABLE_SQL)
@@ -136,6 +154,14 @@ def init_db(paths: DbPaths) -> None:
                     )
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_enriched_published ON enriched_events(published_at DESC)"
+                    )
+                if version < SCHEMA_VERSION:
+                    cur.execute(LLM_REJECTED_TABLE_SQL)
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_llm_rejected_score ON llm_rejected_events(risk_score_0to100 DESC)"
+                    )
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_llm_rejected_published ON llm_rejected_events(published_at DESC)"
                     )
                     _set_schema_version_pg(cur, SCHEMA_VERSION)
         return
@@ -146,7 +172,7 @@ def init_db(paths: DbPaths) -> None:
             "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
         version = _get_schema_version_sqlite(conn)
-        if version < SCHEMA_VERSION:
+        if version < 1:
             conn.execute(RAW_TABLE_SQL)
             conn.execute(ENRICHED_TABLE_SQL)
             conn.execute(REJECTED_TABLE_SQL)
@@ -156,6 +182,20 @@ def init_db(paths: DbPaths) -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_enriched_published ON enriched_events(published_at DESC)"
             )
+        if version < SCHEMA_VERSION:
+            conn.execute(LLM_REJECTED_TABLE_SQL)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_llm_rejected_score ON llm_rejected_events(risk_score_0to100 DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_llm_rejected_published ON llm_rejected_events(published_at DESC)"
+            )
+            # Migrate any existing llm_validation_passed=0 rows out of enriched_events
+            conn.execute(
+                "INSERT OR IGNORE INTO llm_rejected_events "
+                "SELECT * FROM enriched_events WHERE llm_validation_passed = 0"
+            )
+            conn.execute("DELETE FROM enriched_events WHERE llm_validation_passed = 0")
             _set_schema_version_sqlite(conn, SCHEMA_VERSION)
 
 
@@ -272,8 +312,10 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
                     "severity_band = EXCLUDED.severity_band, estimated_delay_days = EXCLUDED.estimated_delay_days, "
                     "delay_confidence = EXCLUDED.delay_confidence, delay_rationale = EXCLUDED.delay_rationale, "
                     "exposure_usd_est = EXCLUDED.exposure_usd_est, exposure_confidence = EXCLUDED.exposure_confidence, "
-                    "exposure_assumptions = EXCLUDED.exposure_assumptions, mitigation_description = EXCLUDED.mitigation_description, "
-                    "mitigation_actions = EXCLUDED.mitigation_actions, mitigation_generated_at = EXCLUDED.mitigation_generated_at, "
+                    "exposure_assumptions = EXCLUDED.exposure_assumptions, "
+                    "mitigation_description = COALESCE(EXCLUDED.mitigation_description, enriched_events.mitigation_description), "
+                    "mitigation_actions = COALESCE(EXCLUDED.mitigation_actions, enriched_events.mitigation_actions), "
+                    "mitigation_generated_at = COALESCE(EXCLUDED.mitigation_generated_at, enriched_events.mitigation_generated_at), "
                     "llm_validation_passed = EXCLUDED.llm_validation_passed, rejected_reason = EXCLUDED.rejected_reason, "
                     "created_at = EXCLUDED.created_at",
                     prepared,
@@ -282,7 +324,7 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
 
     with get_connection(paths) as conn:
         cur = conn.executemany(
-            "INSERT OR REPLACE INTO enriched_events (event_id, article_url, source_name, "
+            "INSERT INTO enriched_events (event_id, article_url, source_name, "
             "source_weight, published_at, ingested_at, title, event_summary, dashboard_blurb, "
             "reason_flagged, oem_entities, supplier_entities, component_entities, "
             "component_criticality, risk_category, disruption_type, geo_country, geo_region, "
@@ -300,7 +342,101 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
             ":estimated_delay_days, :delay_confidence, :delay_rationale, :exposure_usd_est, "
             ":exposure_confidence, :exposure_assumptions, :mitigation_description, "
             ":mitigation_actions, :mitigation_generated_at, :llm_validation_passed, "
-            ":rejected_reason, :created_at)",
+            ":rejected_reason, :created_at) "
+            "ON CONFLICT (event_id) DO UPDATE SET "
+            "article_url = excluded.article_url, source_name = excluded.source_name, "
+            "source_weight = excluded.source_weight, published_at = excluded.published_at, "
+            "ingested_at = excluded.ingested_at, title = excluded.title, "
+            "event_summary = excluded.event_summary, dashboard_blurb = excluded.dashboard_blurb, "
+            "reason_flagged = excluded.reason_flagged, oem_entities = excluded.oem_entities, "
+            "supplier_entities = excluded.supplier_entities, "
+            "component_entities = excluded.component_entities, "
+            "component_criticality = excluded.component_criticality, "
+            "risk_category = excluded.risk_category, disruption_type = excluded.disruption_type, "
+            "geo_country = excluded.geo_country, geo_region = excluded.geo_region, "
+            "geo_confidence = excluded.geo_confidence, impact_1to5 = excluded.impact_1to5, "
+            "probability_1to5 = excluded.probability_1to5, "
+            "time_sensitivity_1to3 = excluded.time_sensitivity_1to3, "
+            "exposure_proxy_1to5 = excluded.exposure_proxy_1to5, "
+            "severity_confidence = excluded.severity_confidence, "
+            "risk_score_0to100 = excluded.risk_score_0to100, "
+            "severity_band = excluded.severity_band, "
+            "estimated_delay_days = excluded.estimated_delay_days, "
+            "delay_confidence = excluded.delay_confidence, "
+            "delay_rationale = excluded.delay_rationale, "
+            "exposure_usd_est = excluded.exposure_usd_est, "
+            "exposure_confidence = excluded.exposure_confidence, "
+            "exposure_assumptions = excluded.exposure_assumptions, "
+            "mitigation_description = COALESCE(excluded.mitigation_description, enriched_events.mitigation_description), "
+            "mitigation_actions = COALESCE(excluded.mitigation_actions, enriched_events.mitigation_actions), "
+            "mitigation_generated_at = COALESCE(excluded.mitigation_generated_at, enriched_events.mitigation_generated_at), "
+            "llm_validation_passed = excluded.llm_validation_passed, "
+            "rejected_reason = excluded.rejected_reason, "
+            "created_at = excluded.created_at",
+            prepared,
+        )
+        return cur.rowcount
+
+
+def upsert_llm_rejected_events(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
+    """Insert or replace LLM-rejected enriched events."""
+
+    prepared = list(rows)
+    if not prepared:
+        return 0
+    if _use_postgres(paths):
+        with get_connection(paths) as conn:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO llm_rejected_events (event_id, article_url, source_name, "
+                    "source_weight, published_at, ingested_at, title, event_summary, dashboard_blurb, "
+                    "reason_flagged, oem_entities, supplier_entities, component_entities, "
+                    "component_criticality, risk_category, disruption_type, geo_country, geo_region, "
+                    "geo_confidence, impact_1to5, probability_1to5, time_sensitivity_1to3, "
+                    "exposure_proxy_1to5, severity_confidence, risk_score_0to100, severity_band, "
+                    "estimated_delay_days, delay_confidence, delay_rationale, exposure_usd_est, "
+                    "exposure_confidence, exposure_assumptions, mitigation_description, "
+                    "mitigation_actions, mitigation_generated_at, llm_validation_passed, "
+                    "rejected_reason, created_at) VALUES (%(event_id)s, %(article_url)s, %(source_name)s, "
+                    "%(source_weight)s, %(published_at)s, %(ingested_at)s, %(title)s, %(event_summary)s, "
+                    "%(dashboard_blurb)s, %(reason_flagged)s, %(oem_entities)s, %(supplier_entities)s, "
+                    "%(component_entities)s, %(component_criticality)s, %(risk_category)s, "
+                    "%(disruption_type)s, %(geo_country)s, %(geo_region)s, %(geo_confidence)s, "
+                    "%(impact_1to5)s, %(probability_1to5)s, %(time_sensitivity_1to3)s, "
+                    "%(exposure_proxy_1to5)s, %(severity_confidence)s, %(risk_score_0to100)s, "
+                    "%(severity_band)s, %(estimated_delay_days)s, %(delay_confidence)s, "
+                    "%(delay_rationale)s, %(exposure_usd_est)s, %(exposure_confidence)s, "
+                    "%(exposure_assumptions)s, %(mitigation_description)s, %(mitigation_actions)s, "
+                    "%(mitigation_generated_at)s, %(llm_validation_passed)s, %(rejected_reason)s, "
+                    "%(created_at)s) ON CONFLICT (event_id) DO UPDATE SET "
+                    "rejected_reason = EXCLUDED.rejected_reason, created_at = EXCLUDED.created_at",
+                    prepared,
+                )
+        return len(prepared)
+
+    with get_connection(paths) as conn:
+        cur = conn.executemany(
+            "INSERT INTO llm_rejected_events (event_id, article_url, source_name, "
+            "source_weight, published_at, ingested_at, title, event_summary, dashboard_blurb, "
+            "reason_flagged, oem_entities, supplier_entities, component_entities, "
+            "component_criticality, risk_category, disruption_type, geo_country, geo_region, "
+            "geo_confidence, impact_1to5, probability_1to5, time_sensitivity_1to3, "
+            "exposure_proxy_1to5, severity_confidence, risk_score_0to100, severity_band, "
+            "estimated_delay_days, delay_confidence, delay_rationale, exposure_usd_est, "
+            "exposure_confidence, exposure_assumptions, mitigation_description, "
+            "mitigation_actions, mitigation_generated_at, llm_validation_passed, "
+            "rejected_reason, created_at) VALUES (:event_id, :article_url, :source_name, "
+            ":source_weight, :published_at, :ingested_at, :title, :event_summary, :dashboard_blurb, "
+            ":reason_flagged, :oem_entities, :supplier_entities, :component_entities, "
+            ":component_criticality, :risk_category, :disruption_type, :geo_country, :geo_region, "
+            ":geo_confidence, :impact_1to5, :probability_1to5, :time_sensitivity_1to3, "
+            ":exposure_proxy_1to5, :severity_confidence, :risk_score_0to100, :severity_band, "
+            ":estimated_delay_days, :delay_confidence, :delay_rationale, :exposure_usd_est, "
+            ":exposure_confidence, :exposure_assumptions, :mitigation_description, "
+            ":mitigation_actions, :mitigation_generated_at, :llm_validation_passed, "
+            ":rejected_reason, :created_at) "
+            "ON CONFLICT (event_id) DO UPDATE SET "
+            "rejected_reason = excluded.rejected_reason, created_at = excluded.created_at",
             prepared,
         )
         return cur.rowcount
@@ -396,6 +532,27 @@ def purge_old_enriched_events(paths: DbPaths, retention_days: int) -> int:
         return cur.rowcount
 
 
+def purge_old_llm_rejected_events(paths: DbPaths, retention_days: int) -> int:
+    """Delete LLM-rejected events older than retention window by published_at."""
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    if _use_postgres(paths):
+        with get_connection(paths) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM llm_rejected_events WHERE published_at < %s",
+                    (cutoff.isoformat(),),
+                )
+                return cur.rowcount
+
+    with get_connection(paths) as conn:
+        cur = conn.execute(
+            "DELETE FROM llm_rejected_events WHERE published_at < ?",
+            (cutoff.isoformat(),),
+        )
+        return cur.rowcount
+
+
 def fetch_enriched_events(paths: DbPaths, limit: int = 500) -> list[dict[str, object]]:
     """Fetch enriched events rows ordered by risk score."""
 
@@ -403,8 +560,8 @@ def fetch_enriched_events(paths: DbPaths, limit: int = 500) -> list[dict[str, ob
         with get_connection(paths) as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT * FROM enriched_events ORDER BY risk_score_0to100 DESC, "
-                    "exposure_usd_est DESC, published_at DESC LIMIT %s",
+                    "SELECT * FROM enriched_events "
+                    "ORDER BY risk_score_0to100 DESC, exposure_usd_est DESC, published_at DESC LIMIT %s",
                     (limit,),
                 )
                 rows = cur.fetchall()
@@ -412,8 +569,8 @@ def fetch_enriched_events(paths: DbPaths, limit: int = 500) -> list[dict[str, ob
 
     with get_connection(paths) as conn:
         rows = conn.execute(
-            "SELECT * FROM enriched_events ORDER BY risk_score_0to100 DESC, "
-            "exposure_usd_est DESC, published_at DESC LIMIT ?",
+            "SELECT * FROM enriched_events "
+            "ORDER BY risk_score_0to100 DESC, exposure_usd_est DESC, published_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
@@ -431,14 +588,18 @@ def fetch_pipeline_counts(paths: DbPaths) -> dict[str, int]:
                 enriched_count = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM rejected_articles")
                 rejected_count = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM llm_rejected_events")
+                llm_rejected_count = cur.fetchone()[0]
     else:
         with get_connection(paths) as conn:
             raw_count = conn.execute("SELECT COUNT(*) FROM raw_articles").fetchone()[0]
             enriched_count = conn.execute("SELECT COUNT(*) FROM enriched_events").fetchone()[0]
             rejected_count = conn.execute("SELECT COUNT(*) FROM rejected_articles").fetchone()[0]
+            llm_rejected_count = conn.execute("SELECT COUNT(*) FROM llm_rejected_events").fetchone()[0]
     return {
         "raw_articles": int(raw_count),
         "enriched_events": int(enriched_count),
+        "llm_rejected_events": int(llm_rejected_count),
         "rejected_articles": int(rejected_count),
     }
 

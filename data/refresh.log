@@ -1,0 +1,4 @@
+{"timestamp": "2026-03-02T21:58:24.218951+00:00", "interval_hours": 24, "stats": {"ingested": 166, "kept": 87, "enriched": 87, "rejected": 79}}
+{"timestamp": "2026-03-04T15:09:09.145160+00:00", "interval_hours": 24, "stats": {"ingested": 166, "kept": 86, "enriched": 86, "rejected": 80}}
+{"timestamp": "2026-03-08T10:22:03.129647+00:00", "interval_hours": 24, "stats": {"ingested": 166, "kept": 94, "enriched": 94, "rejected": 72}}
+{"timestamp": "2026-03-17T10:19:05.418357+00:00", "interval_hours": 24, "stats": {"ingested": 166, "kept": 82, "enriched": 82, "rejected": 84}}

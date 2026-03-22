@@ -19,8 +19,8 @@ def _base_actions(event: EnrichedEvent) -> list[str]:
     ]
     if event.disruption_type in {"Labor Strike", "Plant Shutdown"}:
         actions.append("Validate contractual clauses and union communications.")
-    if event.disruption_type in {"Port Congestion", "Export Restriction"}:
-        actions.append("Assess port diversification and customs lead times.")
+    if event.disruption_type in {"Logistics Disruption", "Trade Restriction"}:
+        actions.append("Assess port diversification and alternate sourcing options.")
     if event.disruption_type == "Cyberattack":
         actions.append("Coordinate supplier cybersecurity status checks.")
     return actions
