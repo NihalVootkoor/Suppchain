@@ -378,6 +378,33 @@ def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) ->
         return cur.rowcount
 
 
+def save_event_mitigation(
+    paths: DbPaths,
+    event_id: str,
+    description: str,
+    actions_json: str,
+    generated_at: str,
+) -> None:
+    """Patch mitigation columns for a single event without touching other fields."""
+    if _use_postgres(paths):
+        with psycopg2.connect(paths.db_url) as conn:  # type: ignore[union-attr]
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE enriched_events SET mitigation_description = %s, "
+                    "mitigation_actions = %s, mitigation_generated_at = %s "
+                    "WHERE event_id = %s",
+                    (description, actions_json, generated_at, event_id),
+                )
+    else:
+        with sqlite3.connect(paths.db_path) as conn:
+            conn.execute(
+                "UPDATE enriched_events SET mitigation_description = ?, "
+                "mitigation_actions = ?, mitigation_generated_at = ? "
+                "WHERE event_id = ?",
+                (description, actions_json, generated_at, event_id),
+            )
+
+
 def upsert_llm_rejected_events(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
     """Insert or replace LLM-rejected enriched events."""
 

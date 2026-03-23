@@ -13,6 +13,7 @@ import streamlit as st
 from src.aggregation import category_breakdown, compute_kpis
 from src.config import get_config
 from src.geo_utils import get_event_coordinates
+from src.storage import DbPaths, save_event_mitigation
 from src.ui_utils import (
     load_events,
     render_debug_panel,
@@ -38,6 +39,19 @@ _SEVERITY_BG = {
 # ── Mitigation action display ─────────────────────────────────────────────────
 _ACTION_LABELS = ["Immediate Action", "Near-Term Action", "Strategic Action"]
 _ACTION_COLORS = ["#e74c3c", "#f39c12", "#27ae60"]
+
+_FALLBACK_DESCRIPTIONS: dict[str, str] = {
+    "Labor Strike": "Monitor union negotiations closely and assess second-source capacity for all affected components.",
+    "Plant Shutdown": "Confirm shutdown scope and restart timeline with the supplier; activate emergency alternate sourcing immediately.",
+    "Logistics Disruption": "Re-route critical shipments and accelerate safety stock replenishment at key distribution centers.",
+    "Trade Restriction": "Engage trade counsel to quantify tariff or sanction exposure and identify compliant alternate sourcing.",
+    "Capacity Constraint": "Confirm output reduction scope with the supplier and activate alternate sourcing for the highest-criticality parts.",
+    "Cyberattack": "Isolate affected supply nodes, validate data integrity, and activate business continuity protocols before resuming procurement.",
+    "Natural Disaster": "Assess supplier facility damage and estimated recovery timeline; activate emergency inventory buffers immediately.",
+    "Supplier Insolvency": "Confirm insolvency status with legal counsel and initiate urgent dual-sourcing for all critical parts.",
+    "Regulatory Change": "Engage compliance and legal teams to assess applicability, then plan a phased supply chain transition.",
+}
+_DEFAULT_FALLBACK_DESC = "Prioritize supply continuity actions and monitor all impact signals closely."
 
 _FALLBACK_ACTIONS: dict[str, list[str]] = {
     "Labor Strike": [
@@ -92,10 +106,8 @@ _DEFAULT_FALLBACK = [
     "Notify procurement and production planning teams immediately.",
 ]
 
-# ── Groq mitigation (live, cached per event for 1 hour) ──────────────────────
-@st.cache_data(ttl=3600)
+# ── Groq mitigation (no Streamlit cache — successful results are persisted to DB) ──
 def _fetch_groq_mitigation(
-    event_id: str,
     event_title: str,
     event_summary: str,
     reason_flagged: str,
@@ -128,13 +140,28 @@ def _fetch_groq_mitigation(
 
 def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
     """Return (description, actions, used_groq).
-    Priority: live Groq → stored DB → deterministic playbook.
+    Priority: stored DB (AI-generated) → live Groq → deterministic playbook.
+    Successful Groq results are persisted so subsequent loads skip re-generation.
     Actions are returned unsliced; caller is responsible for slicing at render time.
     """
+    from datetime import datetime, timezone
+
+    event_id = str(event.get("event_id") or "")
+
+    # Return stored mitigation first — it was written by a prior successful Groq call.
+    # We identify AI-generated stored data by checking whether the description differs
+    # from every deterministic fallback string; if it does, it came from the LLM.
+    stored = event.get("mitigation_actions") or []
+    stored_desc = event.get("mitigation_description") or ""
+    if stored:
+        all_fallback_descs = set(_FALLBACK_DESCRIPTIONS.values()) | {_DEFAULT_FALLBACK_DESC}
+        ai_stored = stored_desc not in all_fallback_descs
+        return stored_desc, [str(a) for a in stored], ai_stored
+
+    # No stored mitigation — try Groq live.
     if config.groq_api_key:
         try:
             result = _fetch_groq_mitigation(
-                event_id=str(event.get("event_id") or event.get("article_url") or ""),
                 event_title=str(event.get("title") or ""),
                 event_summary=str(event.get("event_summary") or ""),
                 reason_flagged=str(event.get("reason_flagged") or ""),
@@ -149,22 +176,32 @@ def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
                 severity_band=str(event.get("severity_band") or "Medium"),
             )
         except Exception as _exc:
-            _logger.warning("Groq mitigation failed for event %s: %s", event.get("event_id"), _exc)
+            _logger.warning("Groq mitigation failed for event %s: %s", event_id, _exc)
             result = None
         if result:
             desc = result.get("mitigation_description") or ""
             actions = result.get("mitigation_actions") or []
             if isinstance(actions, list) and len(actions) >= 1:
-                return desc, [str(a) for a in actions], True
+                actions = [str(a) for a in actions]
+                if event_id:
+                    try:
+                        save_event_mitigation(
+                            paths=DbPaths(config.db_path, config.db_url),
+                            event_id=event_id,
+                            description=desc,
+                            actions_json=json.dumps(actions),
+                            generated_at=datetime.now(timezone.utc).isoformat(),
+                        )
+                    except Exception as _exc:
+                        _logger.warning("Failed to persist Groq mitigation for %s: %s", event_id, _exc)
+                return desc, actions, True
 
-    stored = event.get("mitigation_actions") or []
-    stored_desc = event.get("mitigation_description") or ""
-    if stored:
-        return stored_desc, [str(a) for a in stored], False
-
+    # Groq unavailable or failed — return deterministic playbook (not persisted so next
+    # load retries Groq).
     dtype = str(event.get("disruption_type") or "Other")
     fallback = _FALLBACK_ACTIONS.get(dtype, _DEFAULT_FALLBACK)
-    return "Groq LLM not configured — deterministic playbook applied.", fallback, False
+    desc = _FALLBACK_DESCRIPTIONS.get(dtype, _DEFAULT_FALLBACK_DESC)
+    return desc, fallback, False
 
 
 # ── KPI Cards — uniform single color, no emojis ───────────────────────────────
