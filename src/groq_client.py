@@ -255,18 +255,24 @@ def generate_mitigation_text(
     geo_country: str,
     component_entities: list[str],
     api_key: Optional[str],
-    model: str = "llama-3.1-8b-instant",
+    model: str = "llama-3.3-70b-versatile",
+    risk_score: float = 0.0,
+    exposure_usd_est: float = 0.0,
+    estimated_delay_days: int = 0,
+    severity_band: str = "Medium",
 ) -> Optional[dict[str, Any]]:
     """
-    Generate personalized mitigation description and 3–5 action items for this event.
-    Returns dict with: mitigation_description (str), mitigation_actions (list[str]).
+    Generate personalized mitigation description and 3 structured action items for this event.
+    Returns dict with: mitigation_description (str), mitigation_actions (list[str] of 3).
     Returns None if API key missing or request fails.
     """
     client = _get_client(api_key)
     if not client:
         return None
     components = ", ".join(component_entities[:5]) if component_entities else "general supply"
-    prompt = f"""You are a supply chain risk advisor. For this high-risk event, provide brief, actionable mitigation guidance.
+    exposure_str = f"${exposure_usd_est:,.0f}" if exposure_usd_est else "unknown"
+    delay_str = f"{estimated_delay_days} days" if estimated_delay_days else "unknown"
+    prompt = f"""You are a supply chain risk advisor. Write mitigation guidance for this specific event.
 
 Event title: {event_title}
 Summary: {event_summary}
@@ -274,13 +280,25 @@ Why flagged: {reason_flagged}
 Disruption type: {disruption_type}
 Location: {geo_country}
 Relevant components/supplies: {components}
+Risk score: {risk_score:.0f}/100 ({severity_band} severity)
+Estimated financial exposure: {exposure_str}
+Estimated supply delay: {delay_str}
+
+RULES — follow strictly:
+- The mitigation_description must explain what is UNIQUE about this specific event vs. a generic {disruption_type}. Do NOT restate the risk score, severity band, or exposure — those are already shown. Focus on the specific mechanism of disruption and what to watch.
+- Each action MUST reference named entities from this event (companies, components, routes, ports, countries). Generic phrases like "engage trade counsel", "activate alternate sourcing", or "develop a contingency plan" without specifics are not acceptable.
+- If two disruption events share the same type, their actions must still differ based on the specific context.
+- Do not invent facts. Only use information present in the event title, summary, and context above.
 
 Respond with ONLY a single JSON object, no markdown:
 {{
-  "mitigation_description": "<1-2 sentences: priority and what to monitor>",
-  "mitigation_actions": ["<immediate action 1>", "<near-term action 2>", "<optional longer-term action 3>"]
-}}
-Give 3–5 specific actions (immediate, near-term, longer-term). Do not invent facts; base actions on disruption type and context. Be concise."""
+  "mitigation_description": "<1-2 sentences: the specific mechanism of disruption and what to prioritize monitoring — do not include risk score, severity band, or exposure figures>",
+  "mitigation_actions": {{
+    "immediate": "<most urgent action within 24-48 hours — name specific companies, components, or routes from this event>",
+    "near_term": "<action within 1-2 weeks — name specific alternatives or contingencies relevant to this event>",
+    "strategic": "<longer-term structural change to reduce this specific exposure>"
+  }}
+}}"""
 
     try:
         resp = client.chat.completions.create(
@@ -289,14 +307,26 @@ Give 3–5 specific actions (immediate, near-term, longer-term). Do not invent f
                 {"role": "user", "content": prompt},
             ],
             model=model,
-            temperature=0.3,
+            temperature=0.15,
         )
         raw = _strip_fences((resp.choices[0].message.content or "").strip())
         out = json.loads(raw)
         desc = out.get("mitigation_description") or "Prioritize supply continuity and monitor impact."
-        actions = out.get("mitigation_actions")
-        if not isinstance(actions, list) or not actions:
+        actions_obj = out.get("mitigation_actions")
+        if isinstance(actions_obj, dict):
+            actions = [
+                str(actions_obj.get("immediate") or ""),
+                str(actions_obj.get("near_term") or ""),
+                str(actions_obj.get("strategic") or ""),
+            ]
+            actions = [a for a in actions if a]
+        elif isinstance(actions_obj, list) and actions_obj:
+            # graceful fallback if model returns a list anyway
+            actions = [str(a) for a in actions_obj[:3]]
+        else:
             return None
-        return {"mitigation_description": desc, "mitigation_actions": [str(a) for a in actions[:6]]}
+        if not actions:
+            return None
+        return {"mitigation_description": desc, "mitigation_actions": actions}
     except Exception:
         return None
