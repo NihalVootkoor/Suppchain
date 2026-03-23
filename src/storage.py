@@ -622,6 +622,21 @@ def fetch_oldest_enriched_event_date(paths: DbPaths) -> str:
     return str(row["oldest"])
 
 
+def fetch_existing_event_ids(paths: DbPaths) -> set[str]:
+    """Return set of event_ids already in enriched_events or llm_rejected_events."""
+
+    sql = "SELECT event_id FROM enriched_events UNION SELECT event_id FROM llm_rejected_events"
+    if _use_postgres(paths):
+        with get_connection(paths) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                rows = cur.fetchall()
+    else:
+        with get_connection(paths) as conn:
+            rows = conn.execute(sql).fetchall()
+    return {str(row[0]) for row in rows}
+
+
 def fetch_rejection_samples(paths: DbPaths, limit: int = 10) -> list[tuple[str, str]]:
     """Fetch recent rejection samples."""
 

@@ -11,9 +11,11 @@ __all__ = [
     "render_events_table",
 ]
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 import logging
 from pathlib import Path
+import threading
+import time
 from typing import Iterable  # noqa: UP006 — used in public __all__ signatures
 
 import pandas as pd
@@ -40,22 +42,37 @@ def load_events(db_path: Path) -> list[dict[str, object]]:
     return [row_to_dict(dict(row)) for row in rows]
 
 
-def auto_refresh_if_due(config: object) -> bool:
-    """Run pipeline if the last refresh is older than config.refresh_interval_hours (default 24h)."""
+def _is_refresh_due(config: object) -> bool:
+    """Return True if the last refresh is older than config.refresh_interval_hours."""
 
     interval_hours = getattr(config, "refresh_interval_hours", 24)
     paths = DbPaths(config.db_path, config.db_url)
     init_db(paths)
     last_refresh = get_meta_value(paths, "last_refresh_at")
+    if not last_refresh:
+        return True
     now = datetime.now(timezone.utc)
-    if last_refresh:
-        last_dt = parse_datetime(last_refresh)
-        if (now - last_dt).total_seconds() < interval_hours * 3600:
-            return False
-    run_pipeline(config)
-    set_meta_value(paths, "last_refresh_at", now.isoformat())
-    st.cache_data.clear()
-    return True
+    last_dt = parse_datetime(last_refresh)
+    return (now - last_dt).total_seconds() >= interval_hours * 3600
+
+
+def _run_pipeline_bg(config: object, shared: dict) -> None:
+    """Run pipeline in a background thread; communicate via the shared dict (not session_state)."""
+
+    try:
+        run_pipeline(config, progress_cb=lambda msg: shared.__setitem__("step", msg))
+        set_meta_value(
+            DbPaths(config.db_path, config.db_url),
+            "last_refresh_at",
+            datetime.now(timezone.utc).isoformat(),
+        )
+        st.cache_data.clear()
+        shared["status"] = "done"
+    except Exception as exc:
+        shared["status"] = f"error:{exc}"
+    finally:
+        shared["running"] = False
+        shared["step"] = ""
 
 
 @st.cache_data
@@ -181,10 +198,35 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
     # ── Controls (bottom) ─────────────────────────────────────────────────────
     st.sidebar.markdown("---")
     st.sidebar.header("Controls")
-    # Skip auto-refresh when using Supabase (Cloud) to avoid DB statement timeouts
-    if not config.db_url and auto_refresh_if_due(config):
-        st.sidebar.success("Auto refresh complete.")
-    refresh_clicked = st.sidebar.button("Refresh data")
+
+    # Stale-data banner (non-blocking) — skip on Supabase to avoid DB timeouts
+    if not config.db_url and _is_refresh_due(config):
+        interval_hours = getattr(config, "refresh_interval_hours", 24)
+        st.sidebar.warning(f"Data is over {interval_hours}h old — refresh when ready.")
+
+    # Pipeline state — read from the shared dict (thread-safe via the GIL on simple dict ops)
+    shared: dict = st.session_state.get("_pipeline_shared", {})
+    pipeline_running: bool = shared.get("running", False)
+
+    # If running: show current step and poll until thread finishes
+    if pipeline_running:
+        step = shared.get("step", "Running pipeline...")
+        st.sidebar.info(step)
+        time.sleep(0.5)
+        st.rerun()
+
+    # Show result once after pipeline completes
+    pipeline_status: str = shared.get("status", "")
+    if pipeline_status == "done":
+        shared["status"] = ""
+        st.sidebar.success("Refresh complete.")
+    elif pipeline_status.startswith("error:"):
+        msg = pipeline_status[6:]
+        shared["status"] = ""
+        st.sidebar.error(f"Refresh failed: {msg}")
+
+    refresh_clicked = st.sidebar.button("Refresh data", disabled=pipeline_running)
+
     last_refresh = get_meta_value(DbPaths(config.db_path, config.db_url), "last_refresh_at")
     if last_refresh:
         try:
@@ -204,18 +246,13 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
             "<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: never</span>",
             unsafe_allow_html=True,
         )
-    if refresh_clicked:
-        try:
-            run_pipeline(config)
-            set_meta_value(
-                DbPaths(config.db_path, config.db_url),
-                "last_refresh_at",
-                datetime.now(timezone.utc).isoformat(),
-            )
-            st.cache_data.clear()
-            st.sidebar.success("Refresh complete.")
-        except Exception as exc:
-            st.sidebar.error(f"Refresh failed: {exc}")
+
+    if refresh_clicked and not pipeline_running:
+        shared = {"running": True, "step": "Starting pipeline...", "status": ""}
+        st.session_state["_pipeline_shared"] = shared
+        thread = threading.Thread(target=_run_pipeline_bg, args=(config, shared), daemon=True)
+        thread.start()
+        st.rerun()
 
     status_line = (
         f"Currently displaying {len(filtered)} events across "

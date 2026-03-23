@@ -10,13 +10,13 @@ import zlib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 from urllib.request import Request, urlopen
 
 from src.config import AppConfig
 from src.date_utils import parse_datetime
 from src.filters import filter_articles
-from src.llm_extract import extract_with_llm
+from src.llm_extract import build_event_id, extract_with_llm
 from src.mitigation import generate_mitigation
 from src.models import EnrichedEvent, RawArticle
 from src.scoring import build_enriched_event
@@ -29,6 +29,7 @@ from src.storage import (
     purge_old_llm_rejected_events,
     purge_old_raw_articles,
     purge_old_rejected_articles,
+    fetch_existing_event_ids,
     upsert_enriched_events,
     upsert_llm_rejected_events,
     upsert_raw_articles,
@@ -168,11 +169,19 @@ def parse_rss(xml_text: str, source: str, weight: float) -> list[RawArticle]:
     return articles
 
 
-def ingest_rss(urls: Iterable[str], weights: dict[str, float]) -> list[RawArticle]:
+def ingest_rss(
+    urls: Iterable[str],
+    weights: dict[str, float],
+    progress_cb: Callable[[str], None] | None = None,
+) -> list[RawArticle]:
     """Fetch and parse RSS feeds."""
 
+    url_list = list(urls)
     articles: list[RawArticle] = []
-    for url in urls:
+    for i, url in enumerate(url_list, 1):
+        domain = url.split("/")[2] if "//" in url else url
+        if progress_cb:
+            progress_cb(f"Fetching feed {i}/{len(url_list)}: {domain}...")
         try:
             articles.extend(parse_rss(fetch_rss(url), source=url, weight=weights.get(url, 0.5)))
         except Exception as exc:
@@ -225,26 +234,48 @@ def _dedupe_articles(articles: list[RawArticle]) -> list[RawArticle]:
     return list(deduped.values())
 
 
-def run_pipeline(config: AppConfig) -> dict[str, int]:
+def run_pipeline(
+    config: AppConfig,
+    progress_cb: Callable[[str], None] | None = None,
+) -> dict[str, int]:
     """Run ingestion pipeline and store enriched events."""
+
+    def _progress(msg: str) -> None:
+        logger.info(msg)
+        if progress_cb:
+            progress_cb(msg)
 
     paths = DbPaths(config.db_path, config.db_url)
     init_db(paths)
-    articles = ingest_rss(config.rss_urls, config.source_weights)
+
+    articles = ingest_rss(config.rss_urls, config.source_weights, progress_cb=_progress)
     seed_path = config.project_root / "data" / "seeds.csv"
     articles.extend(_load_seed_articles(seed_path))
     articles = _dedupe_articles(articles)
     upsert_raw_articles(paths, [raw_to_row(article) for article in articles])
+
+    _progress(f"Filtering {len(articles)} articles...")
     kept, rejected = filter_articles(articles)
     rejection_rows = [
         {"article_url": url, "reason": reason, "created_at": datetime.now(timezone.utc).isoformat()}
         for url, reason in rejected.items()
     ]
     insert_rejections(paths, rejection_rows)
+
+    existing_event_ids = fetch_existing_event_ids(paths)
+    new_articles = [
+        a for a in kept
+        if build_event_id(a.article_url, a.published_at) not in existing_event_ids
+    ]
+    skipped = len(kept) - len(new_articles)
+    skip_note = f", {skipped} already processed" if skipped else ""
+    _progress(f"Running AI extraction on {len(new_articles)} new articles{skip_note}...")
+
     enriched_events: list[EnrichedEvent] = []
     llm_rejections: list[dict[str, object]] = []
     llm_rejected_events: list[EnrichedEvent] = []
-    for article in kept:
+    for i, article in enumerate(new_articles, 1):
+        _progress(f"Extracting article {i}/{len(new_articles)}: {article.title[:60]}...")
         extraction = extract_with_llm(article)
         if not extraction.llm_validation_passed:
             llm_rejections.append(
@@ -257,22 +288,33 @@ def run_pipeline(config: AppConfig) -> dict[str, int]:
             llm_rejected_events.append(build_enriched_event(article, extraction))
             continue
         enriched_events.append(build_enriched_event(article, extraction))
+
     insert_rejections(paths, llm_rejections)
     upsert_llm_rejected_events(paths, [event_to_row(event) for event in llm_rejected_events])
     enriched_events.sort(
         key=lambda event: (event.risk_score_0to100, event.exposure_usd_est, event.published_at),
         reverse=True,
     )
-    for event in enriched_events[:3]:
-        generate_mitigation(event)
+
+    if enriched_events:
+        _progress(f"Generating mitigations for top {min(3, len(enriched_events))} events...")
+        for event in enriched_events[:3]:
+            generate_mitigation(event)
+
+    _progress("Saving to database...")
     upsert_enriched_events(paths, [event_to_row(event) for event in enriched_events])
+
+    _progress("Cleaning up old data...")
     purge_old_raw_articles(paths, config.retention_days)
     purge_old_enriched_events(paths, config.enriched_retention_days)
     purge_old_llm_rejected_events(paths, config.enriched_retention_days)
     purge_old_rejected_articles(paths, config.retention_days)
+
     return {
         "ingested": len(articles),
         "kept": len(kept),
+        "new": len(new_articles),
+        "skipped": skipped,
         "enriched": len(enriched_events),
         "rejected": len(rejected) + len(llm_rejections),
     }
