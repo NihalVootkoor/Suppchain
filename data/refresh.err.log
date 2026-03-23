@@ -349,3 +349,11 @@ Traceback (most recent call last):
   File "/Users/nihalvootkoor/Documents/AutoSupplyChain/src/storage.py", line 248, in upsert_raw_articles
     cur.executemany(
 psycopg2.InterfaceError: connection already closed
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction
+[groq] WARNING: Groq returned None — falling back to keyword extraction

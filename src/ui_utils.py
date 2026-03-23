@@ -190,18 +190,18 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         try:
             last_dt = parse_datetime(last_refresh)
             st.sidebar.markdown(
-                f"<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}</span>",
+                f"<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}</span>",
                 unsafe_allow_html=True,
             )
         except Exception as _exc:
             _logger.warning("Failed to parse last_refresh_at %r: %s", last_refresh, _exc)
             st.sidebar.markdown(
-                f"<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: {last_refresh[:16] if last_refresh else '—'}</span>",
+                f"<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: {last_refresh[:16] if last_refresh else '—'}</span>",
                 unsafe_allow_html=True,
             )
     else:
         st.sidebar.markdown(
-            "<span style='color: #27ae60; font-size: 0.8rem;'>Last refresh: never</span>",
+            "<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: never</span>",
             unsafe_allow_html=True,
         )
     if refresh_clicked:
@@ -219,10 +219,10 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
 
     status_line = (
         f"Currently displaying {len(filtered)} events across "
-        f"{len(selected_categories)} categories in {len(selected_regions)} regions"
+        f"{len(selected_regions)} regions"
     )
     st.sidebar.markdown(
-        f"<span style='color: #2980b9; font-size: 0.8rem;'>{status_line}</span>",
+        f"<span style='color: #00ffff; font-size: 0.8rem; text-shadow: 0 0 6px #00ffff;'>{status_line}</span>",
         unsafe_allow_html=True,
     )
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
