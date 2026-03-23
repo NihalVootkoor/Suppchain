@@ -20,6 +20,7 @@ def main() -> None:
     """Render the All Events page."""
     config = get_config()
     st.title("All Events")
+    st.markdown("**Event table:** sort, filter, and paginate. Click a title to open the article.")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:
@@ -45,11 +46,6 @@ def main() -> None:
             e for e in display_events
             if parse_datetime(str(e.get("published_at", ""))).date() >= week_ago
         ]
-
-    st.caption(
-        f"Showing {len(display_events)} of {len(filtered)} filtered events. "
-        "Sort by any column · filter inline · paginate · click title to open article."
-    )
 
     # ── CSV export ────────────────────────────────────────────────────────────
     if display_events:
@@ -78,6 +74,10 @@ def main() -> None:
             )
 
     render_events_table(display_events, use_aggrid=True, height=620, selection_mode="multiple")
+    st.caption(
+        f"Showing {len(display_events)} of {len(filtered)} filtered events. "
+        "Sort by any column · filter inline · paginate · click title to open article."
+    )
 
 
 if __name__ == "__main__":

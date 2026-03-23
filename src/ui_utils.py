@@ -357,7 +357,6 @@ class TitleLinkRenderer {
             elif selection_mode == "multiple":
                 gb.configure_selection(selection_mode="multiple", use_checkbox=True)
             grid_options = gb.build()
-            st.markdown("**Event table** — sort, filter, and paginate. Click a title to open the article.")
             grid_response = AgGrid(
                 df,
                 gridOptions=grid_options,

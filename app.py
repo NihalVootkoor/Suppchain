@@ -19,7 +19,7 @@ from src.command_center import render_command_center
 
 nav = st.navigation([
     st.Page(render_command_center, title="Command Center", default=True),
-    st.Page("pages/2_AI_Mitigation.py", title="AI-Powered Mitigation"),
     st.Page("pages/3_All_Events.py", title="All Events"),
+    st.Page("pages/2_AI_Mitigation.py", title="AI-Powered Mitigation"),
 ])
 nav.run()

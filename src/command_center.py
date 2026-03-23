@@ -104,6 +104,10 @@ def _fetch_groq_mitigation(
     component_entities_json: str,
     groq_api_key: str,
     groq_model: str,
+    risk_score: float,
+    exposure_usd_est: float,
+    estimated_delay_days: int,
+    severity_band: str,
 ) -> dict | None:
     from src.groq_client import generate_mitigation_text
     return generate_mitigation_text(
@@ -115,12 +119,17 @@ def _fetch_groq_mitigation(
         component_entities=json.loads(component_entities_json),
         api_key=groq_api_key,
         model=groq_model,
+        risk_score=risk_score,
+        exposure_usd_est=exposure_usd_est,
+        estimated_delay_days=estimated_delay_days,
+        severity_band=severity_band,
     )
 
 
 def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
-    """Return (description, actions[1-3], used_groq).
+    """Return (description, actions, used_groq).
     Priority: live Groq → stored DB → deterministic playbook.
+    Actions are returned unsliced; caller is responsible for slicing at render time.
     """
     if config.groq_api_key:
         try:
@@ -134,6 +143,10 @@ def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
                 component_entities_json=json.dumps(event.get("component_entities") or []),
                 groq_api_key=config.groq_api_key,
                 groq_model=config.groq_model,
+                risk_score=float(event.get("risk_score_0to100") or 0),
+                exposure_usd_est=float(event.get("exposure_usd_est") or 0),
+                estimated_delay_days=int(event.get("estimated_delay_days") or 0),
+                severity_band=str(event.get("severity_band") or "Medium"),
             )
         except Exception as _exc:
             _logger.warning("Groq mitigation failed for event %s: %s", event.get("event_id"), _exc)
@@ -142,12 +155,12 @@ def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
             desc = result.get("mitigation_description") or ""
             actions = result.get("mitigation_actions") or []
             if isinstance(actions, list) and len(actions) >= 1:
-                return desc, [str(a) for a in actions[:3]], True
+                return desc, [str(a) for a in actions], True
 
     stored = event.get("mitigation_actions") or []
     stored_desc = event.get("mitigation_description") or ""
     if stored:
-        return stored_desc, [str(a) for a in stored[:3]], False
+        return stored_desc, [str(a) for a in stored], False
 
     dtype = str(event.get("disruption_type") or "Other")
     fallback = _FALLBACK_ACTIONS.get(dtype, _DEFAULT_FALLBACK)
@@ -532,7 +545,7 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
     mit_desc, mit_actions, used_groq = _get_mitigation(event, config)
     source_label = "AI-Powered Mitigation" if used_groq else "Playbook Mitigation"
 
-    # ── Mitigation actions HTML ────────────────────────────────────────────────
+    # ── Mitigation actions HTML (slice to 3 at render time) ───────────────────
     action_html = ""
     for i, action in enumerate(mit_actions[:3]):
         label = _ACTION_LABELS[i] if i < len(_ACTION_LABELS) else f"Action {i + 1}"
@@ -573,8 +586,8 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         + f'<a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
         f'</div>'
         f'<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">'
-        f'<span style="background:{sev_color};color:#fff;font-size:0.63rem;font-weight:800;padding:4px 11px;border-radius:4px;letter-spacing:0.07em;white-space:nowrap;">{_sev}</span>'
-        f'<span style="background:rgba(239,68,68,0.18);color:#f87171;font-size:0.65rem;font-weight:800;padding:4px 11px;border-radius:4px;white-space:nowrap;">RISK {score:.0f}/100</span>'
+        f'<span style="background:{sev_color};color:#fff;font-size:0.64rem;font-weight:800;padding:4px 11px;border-radius:4px;letter-spacing:0.07em;white-space:nowrap;">{_sev}</span>'
+        f'<span style="background:rgba(239,68,68,0.18);color:#f87171;font-size:0.64rem;font-weight:800;padding:4px 11px;border-radius:4px;white-space:nowrap;">RISK {score:.0f}/100</span>'
         f'</div>'
         f'</div>'
         f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;font-size:0.72rem;font-weight:500;color:#ffffff;">'
@@ -601,7 +614,7 @@ def render_command_center() -> None:
     config = get_config()
     st.title("Command Center")
     st.markdown(
-        "This dashboard provides teams a real-time understanding of risks affecting the global automotive supply chain "
+        "**What is it:** This dashboard provides teams a real-time understanding of risks affecting the global automotive supply chain "
         "and how to respond appropriately. It ingests news from various global feeds (RSS), scores each event by "
         "severity, and surfaces the issues most likely to impact suppliers.\n\n"
         "**How to use it:** Use the sidebar to view \"All Events\" and \"AI-Powered Mitigation\". "
