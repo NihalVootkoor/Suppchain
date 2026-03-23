@@ -222,7 +222,7 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         f"{len(selected_regions)} regions"
     )
     st.sidebar.markdown(
-        f"<span style='color: #00ffff; font-size: 0.8rem; text-shadow: 0 0 6px #00ffff;'>{status_line}</span>",
+        f"<span style='color: #5bc8e8; font-size: 0.8rem;'>{status_line}</span>",
         unsafe_allow_html=True,
     )
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
@@ -237,29 +237,7 @@ def render_debug_panel(db_path: Path) -> None:
     """Render debug data in the sidebar."""
 
     config = get_config()
-    seeds_path = config.project_root / "data" / "seeds.csv"
     st.sidebar.subheader("Admin actions")
-    if st.sidebar.button("Import Seeds (Backfill)"):
-        try:
-            from src.backfill import run_seed_backfill
-            stats = run_seed_backfill(str(seeds_path))
-            st.cache_data.clear()
-            st.sidebar.success("Seed backfill complete.")
-            st.session_state["seed_backfill_stats"] = stats
-        except Exception as exc:
-            st.sidebar.error(f"Seed backfill failed: {exc}")
-    stats = st.session_state.get("seed_backfill_stats")
-    if stats:
-        st.sidebar.subheader("Seed backfill stats")
-        st.sidebar.json(
-            {
-                "raw_upserts": stats.get("raw_upserts", 0),
-                "candidates": stats.get("candidates", 0),
-                "enriched_written": stats.get("enriched_written", 0),
-                "rejected_after_validation": stats.get("rejected_after_validation", 0),
-                "oldest_event_date": stats.get("oldest_event_date", ""),
-            }
-        )
 
     db_label = "Supabase" if config.db_url else "Local (SQLite)"
     st.sidebar.info(f"**Database:** {db_label}")
