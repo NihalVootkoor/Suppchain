@@ -325,3 +325,27 @@ Traceback (most recent call last):
   File "/Users/nihalvootkoor/Documents/AutoSupplyChain/src/storage.py", line 208, in upsert_raw_articles
     cur.executemany(
 psycopg2.InterfaceError: connection already closed
+Failed to ingest https://www.automotiveworld.com/feed/: The read operation timed out
+Traceback (most recent call last):
+  File "/Users/nihalvootkoor/Documents/AutoSupplyChain/src/storage.py", line 248, in upsert_raw_articles
+    cur.executemany(
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/nihalvootkoor/Documents/AutoSupplyChain/scripts/refresh_pipeline.py", line 60, in <module>
+    raise SystemExit(main())
+  File "/Users/nihalvootkoor/Documents/AutoSupplyChain/scripts/refresh_pipeline.py", line 40, in main
+    stats = run_pipeline(config)
+  File "/Users/nihalvootkoor/Documents/AutoSupplyChain/src/rss_ingest.py", line 237, in run_pipeline
+    upsert_raw_articles(paths, [raw_to_row(article) for article in articles])
+  File "/Users/nihalvootkoor/Documents/AutoSupplyChain/src/storage.py", line 248, in upsert_raw_articles
+    cur.executemany(
+psycopg2.InterfaceError: connection already closed

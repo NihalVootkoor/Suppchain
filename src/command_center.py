@@ -601,11 +601,11 @@ def render_command_center() -> None:
     config = get_config()
     st.title("Command Center")
     st.markdown(
-        "This dashboard gives you a real-time view of risks affecting the global automotive supply chain. "
-        "It pulls in live data from global news feeds, scores each event by severity, and surfaces the issues "
-        "most likely to impact your suppliers.\n\n"
-        "**How to use it:** Use the sidebar to view \"All Events\" and \"AI-Powered Mitigation\" for high risk events. "
-        "Command Center provides an at a glance view with KPI cards at the top. "
+        "This dashboard provides teams a real-time understanding of risks affecting the global automotive supply chain "
+        "and how to respond appropriately. It ingests news from various global feeds (RSS), scores each event by "
+        "severity, and surfaces the issues most likely to impact suppliers.\n\n"
+        "**How to use it:** Use the sidebar to view \"All Events\" and \"AI-Powered Mitigation\". "
+        "Command Center provides estimated KPI cards at the top. "
         "The charts below break down risk trends over time and by category. "
         "Scroll down to the world map to see where risks are concentrated geographically."
     )
