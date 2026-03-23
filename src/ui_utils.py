@@ -86,15 +86,14 @@ def filter_events(
 
 
 def _default_date_range(dates: Iterable[date]) -> tuple[date, date]:
-    """Return default date range (last 365 days) within data bounds."""
+    """Return default date range starting from Jan 28, 2026 within data bounds."""
 
     dates_list = list(dates)
-    today = date.today()
+    data_start = date(2026, 1, 28)
     if not dates_list:
-        return today - timedelta(days=365), today
-    min_date = min(dates_list)
+        return data_start, date.today()
     max_date = max(dates_list)
-    start = max(max_date - timedelta(days=365), min_date)
+    start = max(data_start, min(dates_list))
     end = max(max_date, start)
     return start, end
 
