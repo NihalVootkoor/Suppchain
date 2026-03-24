@@ -277,7 +277,6 @@ def render_debug_panel(db_path: Path) -> None:
     """Render debug data in the sidebar."""
 
     config = get_config()
-    st.sidebar.subheader("Admin actions")
 
     db_label = "Supabase" if config.db_url else "Local (SQLite)"
     st.sidebar.info(f"**Database:** {db_label}")
