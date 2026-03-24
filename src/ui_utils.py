@@ -267,7 +267,7 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         st.rerun()
 
     st.sidebar.markdown(
-        "<div style='position: fixed; bottom: 1rem; font-size: 1rem; font-weight: 600; color: #ffffff;'>Built by Nihal Vootkoor</div>",
+        "<div style='position: fixed; bottom: 1rem; font-size: 1rem; font-weight: 600; color: #888888;'>Built by Nihal Vootkoor</div>",
         unsafe_allow_html=True,
     )
     return filtered, show_debug
