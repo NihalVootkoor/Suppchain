@@ -31,21 +31,25 @@ def _base_actions(event: EnrichedEvent) -> list[str]:
             "Validate union negotiations and identify all affected supplier sites immediately.",
             "Activate alternate component sourcing outside the affected region.",
             "Review and strengthen multi-source contracts to reduce single-supplier dependency.",
+            "Open direct communication with union representatives to monitor resolution timeline.",
         ],
         "Plant Shutdown": [
             "Confirm shutdown scope and estimated restart timeline with the supplier.",
             "Activate emergency alternate sourcing protocols for all critical parts.",
             "Adjust production schedules and alert downstream OEM partners.",
+            "Engage union contacts and local management to assess restart conditions.",
         ],
         "Logistics Disruption": [
             "Re-route shipments through alternate ports or intermodal channels now.",
             "Accelerate customs clearance for all critical in-transit inventory.",
             "Increase safety stock levels at key regional distribution centers.",
+            "Qualify alternate freight forwarders and regional sourcing hubs to reduce choke-point dependency.",
         ],
         "Trade Restriction": [
             "Engage trade counsel to assess full sanction or tariff exposure.",
             "Identify alternate country-of-origin sourcing for restricted materials.",
             "Initiate compliance review of all affected SKUs and HS codes.",
+            "Model tariff impact on landed cost and update supplier contracts accordingly.",
         ],
         "Capacity Constraint": [
             "Confirm output reduction scope and estimated recovery timeline with supplier.",
@@ -56,6 +60,7 @@ def _base_actions(event: EnrichedEvent) -> list[str]:
             "Conduct immediate cybersecurity status check with all affected suppliers.",
             "Isolate affected supply nodes and activate business continuity protocols.",
             "Assess data integrity and switch to manual backup processes where needed.",
+            "Mandate supplier cybersecurity attestation and verify EDI/API channel integrity before resuming orders.",
         ],
         "Natural Disaster": [
             "Assess supplier facility damage and estimated recovery timeline.",

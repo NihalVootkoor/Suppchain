@@ -6,3 +6,4 @@ pydantic
 groq
 plotly
 streamlit-aggrid
+pytest
