@@ -257,11 +257,23 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         unsafe_allow_html=True,
     )
 
-    refresh_clicked = st.sidebar.button("Refresh data", disabled=pipeline_running)
+    _DAILY_REFRESH_LIMIT = 5
+    _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _db_paths = DbPaths(config.db_path, config.db_url)
+    _count_key = f"manual_refresh_count_{_today}"
+    _daily_count = int(get_meta_value(_db_paths, _count_key) or 0)
+    _limit_reached = _daily_count >= _DAILY_REFRESH_LIMIT
+
+    refresh_clicked = st.sidebar.button(
+        "Refresh data", disabled=pipeline_running or _limit_reached
+    )
+    if _limit_reached:
+        st.sidebar.caption(f"Daily refresh limit reached ({_DAILY_REFRESH_LIMIT}/day). Resets at midnight UTC.")
     st.sidebar.markdown("---")
     show_debug = st.sidebar.checkbox("Show debug panel", value=False)
 
-    if refresh_clicked and not pipeline_running:
+    if refresh_clicked and not pipeline_running and not _limit_reached:
+        set_meta_value(_db_paths, _count_key, str(_daily_count + 1))
         shared = {"running": True, "step": "Starting pipeline...", "status": ""}
         st.session_state["_pipeline_shared"] = shared
         thread = threading.Thread(target=_run_pipeline_bg, args=(config, shared), daemon=True)
