@@ -143,6 +143,8 @@ def inject_full_width_css() -> None:
         }
         /* ── Page titles ── */
         h1 { font-size: 1.6rem !important; font-weight: 700 !important; }
+        /* ── Hide heading anchor links ── */
+        h1 a, h2 a, h3 a, h4 a, h5 a, h6 a { display: none !important; }
         /* ── Sidebar nav links ── */
         [data-testid="stSidebarNavLink"] p,
         [data-testid="stSidebarNavLink"] span {
