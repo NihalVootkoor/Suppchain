@@ -31,11 +31,7 @@ def render_ai_mitigation() -> None:
     )[:3]
 
     st.markdown(
-        "<p style='font-size:1.3rem;font-weight:600;margin-bottom:0;'>Top 3 High-Risk Events</p>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Ranked by risk score and estimated exposure. "
+        "**Top 3 High-Risk Events:** Ranked by risk score and estimated exposure. "
         "Click any article title to read the source. "
         "Mitigation guidance is AI-powered via Groq LLM when configured."
     )

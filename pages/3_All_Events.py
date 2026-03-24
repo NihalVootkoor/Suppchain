@@ -20,7 +20,7 @@ def main() -> None:
     """Render the All Events page."""
     config = get_config()
     st.title("All Events")
-    st.markdown("Event table: Sort, filter, and paginate. Click a title to open the article.")
+    st.markdown("**Event table:** Sort, filter, and paginate. Click a title to open the article.")
     events = load_events(config.db_path)
     filtered, show_debug = render_sidebar(events)
     if show_debug:
