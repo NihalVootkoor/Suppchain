@@ -168,6 +168,11 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
     dates = [parse_datetime(str(item["published_at"])).date() for item in events]
     start_default, end_default = _default_date_range(dates)
 
+    st.sidebar.markdown(
+        "<style>section[data-testid='stSidebar'] div[data-testid='stExpander'] { text-align: center; } "
+        "section[data-testid='stSidebar'] div[data-testid='stExpander'] summary { justify-content: center; }</style>",
+        unsafe_allow_html=True,
+    )
     with st.sidebar.expander("Filters", expanded=False):
         date_value = st.date_input("Date range", (start_default, end_default))
         if isinstance(date_value, tuple) and len(date_value) == 2:
@@ -197,7 +202,6 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
 
     # ── Controls (bottom) ─────────────────────────────────────────────────────
     st.sidebar.markdown("---")
-    st.sidebar.header("Controls")
 
     # Stale-data banner (non-blocking) — skip on Supabase to avoid DB timeouts
     if not config.db_url and _is_refresh_due(config):
@@ -225,27 +229,35 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         shared["status"] = ""
         st.sidebar.error(f"Refresh failed: {msg}")
 
-    refresh_clicked = st.sidebar.button("Refresh data", disabled=pipeline_running)
-
     last_refresh = get_meta_value(DbPaths(config.db_path, config.db_url), "last_refresh_at")
+    status_line = (
+        f"Currently displaying {len(filtered)} events across "
+        f"{len(selected_regions)} regions"
+    )
     if last_refresh:
         try:
             last_dt = parse_datetime(last_refresh)
-            st.sidebar.markdown(
-                f"<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}</span>",
-                unsafe_allow_html=True,
-            )
+            last_refresh_text = f"Last refresh: {last_dt.strftime('%b %d, %Y %H:%M UTC')}"
         except Exception as _exc:
             _logger.warning("Failed to parse last_refresh_at %r: %s", last_refresh, _exc)
-            st.sidebar.markdown(
-                f"<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: {last_refresh[:16] if last_refresh else '—'}</span>",
-                unsafe_allow_html=True,
-            )
+            last_refresh_text = f"Last refresh: {last_refresh[:16] if last_refresh else '—'}"
     else:
-        st.sidebar.markdown(
-            "<span style='color: #39ff14; font-size: 0.8rem; text-shadow: 0 0 6px #39ff14;'>Last refresh: never</span>",
-            unsafe_allow_html=True,
-        )
+        last_refresh_text = "Last refresh: never"
+    st.sidebar.markdown(
+        "<div style='font-size: 0.8rem; word-break: break-word; white-space: normal; margin-bottom: 12px;'>"
+        f"<span style='color: #39ff14; text-shadow: 0 0 6px #39ff14;'>{last_refresh_text}</span><br>"
+        f"<span style='color: #5bc8e8;'>{status_line}</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown(
+        "<style>div[data-testid='stSidebar'] div.stButton > button { width: 100%; }</style>",
+        unsafe_allow_html=True,
+    )
+
+    refresh_clicked = st.sidebar.button("Refresh data", disabled=pipeline_running)
+    st.sidebar.markdown("---")
+    show_debug = st.sidebar.checkbox("Show debug panel", value=False)
 
     if refresh_clicked and not pipeline_running:
         shared = {"running": True, "step": "Starting pipeline...", "status": ""}
@@ -254,17 +266,8 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         thread.start()
         st.rerun()
 
-    status_line = (
-        f"Currently displaying {len(filtered)} events across "
-        f"{len(selected_regions)} regions"
-    )
     st.sidebar.markdown(
-        f"<span style='color: #5bc8e8; font-size: 0.8rem;'>{status_line}</span>",
-        unsafe_allow_html=True,
-    )
-    show_debug = st.sidebar.checkbox("Show debug panel", value=False)
-    st.sidebar.markdown(
-        "<div style='margin-top: 12px;'>Built by Nihal Vootkoor &nbsp;·&nbsp; <strong>DEMO</strong></div>",
+        "<div style='position: fixed; bottom: 1rem; font-size: 1rem; font-weight: 600; color: #ffffff;'>Built by Nihal Vootkoor</div>",
         unsafe_allow_html=True,
     )
     return filtered, show_debug
