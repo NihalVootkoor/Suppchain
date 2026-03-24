@@ -266,10 +266,13 @@ def upsert_raw_articles(paths: DbPaths, rows: Iterable[dict[str, object]]) -> in
         return cur.rowcount
 
 
+_ENRICHED_START = "2026-01-28"
+
+
 def upsert_enriched_events(paths: DbPaths, rows: Iterable[dict[str, object]]) -> int:
     """Insert or replace enriched events."""
 
-    prepared = list(rows)
+    prepared = [r for r in rows if str(r.get("published_at", "")) >= _ENRICHED_START]
     if not prepared:
         return 0
     if _use_postgres(paths):
