@@ -680,7 +680,6 @@ def render_command_center() -> None:
         _render_severity_trend(filtered)
     with col_r:
         st.markdown("**Risk Category Breakdown**")
-        st.caption("Event count by supply chain risk category.")
         _render_category_chart(filtered)
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
