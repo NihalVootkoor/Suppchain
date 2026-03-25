@@ -15,6 +15,7 @@ from src.config import get_config
 from src.geo_utils import get_event_coordinates
 from src.storage import DbPaths, save_event_mitigation
 from src.ui_utils import (
+    _safe_url,
     load_events,
     render_debug_panel,
     render_sidebar,
@@ -423,16 +424,18 @@ def _render_category_chart(events: list[dict]) -> None:
                 textposition="outside",
                 texttemplate="%{text}",
                 textfont=dict(color=_TICK_COLOR, size=11),
+                cliponaxis=False,
                 hovertemplate="%{y}<br>Count: %{x}<extra></extra>",
             )
         ],
         layout=go.Layout(
             height=310,
-            margin=dict(l=10, r=40, t=8, b=0),
+            margin=dict(l=10, r=55, t=8, b=0),
             xaxis=dict(
                 title="Events",
                 gridcolor=_GRID_COLOR,
                 tickfont=dict(color=_TICK_COLOR, size=10),
+                range=[0, df["count"].max() * 1.2],
             ),
             yaxis=dict(
                 title="",
@@ -546,7 +549,7 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         _logger.warning("Invalid risk_score_0to100 for event %s", event.get("event_id"))
         score = 0.0
     title = _html.escape(str(event.get("title") or "Untitled Event"))
-    url = str(event.get("article_url") or "#")
+    url = _safe_url(event.get("article_url")) or "#"
     disruption = str(event.get("disruption_type") or "Unknown Type")
     country = str(event.get("geo_country") or "")
     region = str(event.get("geo_region") or "")
@@ -620,7 +623,7 @@ def _render_top_event_card(rank: int, event: dict, config) -> None:
         f'<div style="flex:1;min-width:0;">'
         f'<span style="background:rgba(255,255,255,0.08);color:#94a3b8;font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:9px;vertical-align:middle;">#{rank}</span>'
         + (f'<span style="background:#16a34a;color:#fff;font-size:0.58rem;font-weight:800;padding:2px 7px;border-radius:4px;margin-right:9px;vertical-align:middle;letter-spacing:0.06em;">NEW</span>' if is_new else "")
-        + f'<a href="{url}" target="_blank" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
+        + f'<a href="{_html.escape(url)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#3b82f6;font-weight:700;font-size:0.97rem;line-height:1.45;word-break:break-word;">{title} ↗</a>'
         f'</div>'
         f'<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">'
         f'<span style="background:{sev_color};color:#fff;font-size:0.64rem;font-weight:800;padding:4px 11px;border-radius:4px;letter-spacing:0.07em;white-space:nowrap;">{_sev}</span>'
