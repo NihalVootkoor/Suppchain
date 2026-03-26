@@ -46,16 +46,19 @@ def fetch_rss(url: str) -> str:
         "User-Agent": "AutoSupplyChainMonitor/1.0 (+https://example.com)",
         "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8",
     }
+    _MAX_FEED_BYTES = 10 * 1024 * 1024  # 10 MB hard limit
     request = Request(url, headers=headers)
     with urlopen(request, timeout=20) as response:
-        payload = response.read()
+        payload = response.read(_MAX_FEED_BYTES + 1)
+        if len(payload) > _MAX_FEED_BYTES:
+            raise ValueError(f"RSS feed too large (>{_MAX_FEED_BYTES // 1024 // 1024} MB): {url}")
         encoding = (response.headers.get("Content-Encoding") or "").lower()
         if "gzip" in encoding:
             payload = gzip.decompress(payload)
         elif "deflate" in encoding:
             payload = zlib.decompress(payload)
         charset = response.headers.get_content_charset() or "utf-8"
-        return payload.decode(charset, errors="ignore")
+        return payload.decode(charset, errors="replace")
 
 
 def _find_text(item: ET.Element, tags: Iterable[str]) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Iterable
@@ -22,6 +23,7 @@ class KpiSummary:
     events_this_week: int       # events published in the last 7 days
     events_last_week: int       # events published in the 7 days before that
     highest_risk_region: str    # region with highest avg risk score (excluding Unknown)
+    highest_risk_component: str  # component entity with highest avg risk score
 
 
 def _as_float(values: Iterable[float]) -> float:
@@ -85,6 +87,30 @@ def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
         if candidates else ""
     )
 
+    # Highest risk component: weighted avg score per component, factoring in
+    # component_criticality (high=1.3×, medium=1.0×, low=0.8×) so a critical
+    # component with a slightly lower score still outranks a low-criticality one.
+    # No minimum-appearance threshold — component coverage is sparse by nature.
+    _CRIT_WEIGHT = {"high": 1.3, "medium": 1.0, "low": 0.8}
+    component_scores: dict[str, list[float]] = {}
+    for row in rows:
+        raw = row.get("component_entities") or "[]"
+        try:
+            components: list[str] = json.loads(raw) if isinstance(raw, str) else list(raw)
+        except (json.JSONDecodeError, TypeError):
+            components = []
+        score = float(row["risk_score_0to100"])
+        crit = str(row.get("component_criticality") or "low").lower()
+        weight = _CRIT_WEIGHT.get(crit, 1.0)
+        for comp in components:
+            comp = comp.strip()
+            if comp:
+                component_scores.setdefault(comp, []).append(score * weight)
+    highest_risk_component = (
+        max(component_scores, key=lambda c: sum(component_scores[c]) / len(component_scores[c]))
+        if component_scores else ""
+    )
+
     return KpiSummary(
         total_events=len(rows),
         high_critical_events=high_critical,
@@ -95,6 +121,7 @@ def compute_kpis(rows: list[dict[str, object]]) -> KpiSummary:
         events_this_week=events_this_week,
         events_last_week=events_last_week,
         highest_risk_region=highest_risk_region,
+        highest_risk_component=highest_risk_component,
     )
 
 

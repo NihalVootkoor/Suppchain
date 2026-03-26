@@ -233,7 +233,7 @@ def _kpi_card_html(label: str, value: str, change_html: str = "") -> str:
 
 
 def _render_kpi_cards(kpis) -> None:
-    """Six uniform KPI cards in two rows of three."""
+    """Seven uniform KPI cards: three in row 1, four in row 2."""
     # Week-over-week event delta — red if more events (worse), green if fewer (better)
     week_delta = kpis.events_this_week - kpis.events_last_week
     week_arrow = "▲" if week_delta >= 0 else "▼"
@@ -267,13 +267,20 @@ def _render_kpi_cards(kpis) -> None:
 
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-    col4, col5, col6 = st.columns(3)
+    col4, col5, col6, col7 = st.columns(4)
     col4.markdown(
         _kpi_card_html("Highest Risk Region", kpis.highest_risk_region or "—"),
         unsafe_allow_html=True,
     )
-    col5.markdown(_kpi_card_html("Avg Estimated Delay", f"{kpis.avg_delay_days:.1f} days"), unsafe_allow_html=True)
-    col6.markdown(
+    col5.markdown(
+        _kpi_card_html(
+            "Highest Risk Component",
+            kpis.highest_risk_component.title() if kpis.highest_risk_component else "—",
+        ),
+        unsafe_allow_html=True,
+    )
+    col6.markdown(_kpi_card_html("Avg Estimated Delay", f"{kpis.avg_delay_days:.1f} days"), unsafe_allow_html=True)
+    col7.markdown(
         _kpi_card_html("Total Estimated Exposure", f"${kpis.total_exposure_usd:,.0f}"),
         unsafe_allow_html=True,
     )
