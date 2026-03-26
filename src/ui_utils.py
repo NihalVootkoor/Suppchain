@@ -257,7 +257,7 @@ def render_sidebar(events: list[dict[str, object]]) -> tuple[list[dict[str, obje
         unsafe_allow_html=True,
     )
 
-    _DAILY_REFRESH_LIMIT = 5
+    _DAILY_REFRESH_LIMIT = 1
     _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     _db_paths = DbPaths(config.db_path, config.db_url)
     _count_key = f"manual_refresh_count_{_today}"
