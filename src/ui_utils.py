@@ -327,6 +327,7 @@ def _events_to_display_df(events: list[dict]) -> pd.DataFrame:
         except (ValueError, TypeError):
             delay_days = 0
         rows.append({
+            "article_url": _safe_url(e.get("article_url")),
             "title": str(e.get("title") or ""),
             "risk_category": str(e.get("risk_category") or ""),
             "disruption_type": str(e.get("disruption_type") or ""),
@@ -337,7 +338,6 @@ def _events_to_display_df(events: list[dict]) -> pd.DataFrame:
             "exposure_usd": exposure_usd,
             "delay_days": delay_days,
             "published_at": str(e.get("published_at") or ""),
-            "article_url": _safe_url(e.get("article_url")),
         })
     return pd.DataFrame(rows)
 
