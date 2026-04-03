@@ -1,9 +1,8 @@
-streamlit>=1.54.0
+streamlit>=1.36.0
 python-dateutil
 psycopg2-binary
 fpdf2
 pydantic
-groq
+groq>=1.0.0
 plotly
-streamlit-aggrid
 pytest

@@ -342,79 +342,13 @@ def _events_to_display_df(events: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def render_events_table(
-    events: list[dict],
-    use_aggrid: bool = True,
-    height: int = 400,
-    selection_mode: str = "single",
-) -> None:
-    """Render a professional event table: AG Grid if available, else st.dataframe with column_config."""
+def render_events_table(events: list[dict]) -> None:
+    """Render an event table using st.dataframe with column_config."""
     if not events:
         st.info("No events to display.")
         return
     df = _events_to_display_df(events)
-    if use_aggrid:
-        try:
-            from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
-
-            title_link_renderer = JsCode("""
-class TitleLinkRenderer {
-    init(params) {
-        this.eGui = document.createElement('a');
-        const url = params.data.article_url || '#';
-        this.eGui.setAttribute('href', url);
-        this.eGui.setAttribute('target', '_blank');
-        this.eGui.setAttribute('rel', 'noopener noreferrer');
-        this.eGui.style.color = '#4da6ff';
-        this.eGui.style.textDecoration = 'none';
-        this.eGui.style.cursor = 'pointer';
-        this.eGui.innerText = params.value || '';
-    }
-    getGui() { return this.eGui; }
-}
-""")
-
-            gb = GridOptionsBuilder.from_dataframe(df)
-            gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=25)
-            gb.configure_side_bar()
-            gb.configure_default_column(sortable=True, filterable=True)
-            gb.configure_column("article_url", hide=True)
-            gb.configure_column("title", flex=2, cellRenderer=title_link_renderer)
-            gb.configure_column("risk_score", width=95, sort="desc", sortIndex=0)
-            gb.configure_column("exposure_usd", width=110)
-            gb.configure_column("delay_days", width=95)
-            if selection_mode == "single":
-                gb.configure_selection(selection_mode="single", use_checkbox=True)
-            elif selection_mode == "multiple":
-                gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-            grid_options = gb.build()
-            grid_response = AgGrid(
-                df,
-                gridOptions=grid_options,
-                height=height,
-                update_mode=GridUpdateMode.MODEL_CHANGED,
-                theme="streamlit",
-                allow_unsafe_jscode=True,
-            )
-            selected = grid_response.get("selected_rows")
-            if selected is not None:
-                has_selection = (
-                    not selected.empty
-                    if hasattr(selected, "empty")
-                    else bool(selected)
-                )
-                if has_selection:
-                    st.subheader("Selected row(s)")
-                    records = (
-                        selected.to_dict(orient="records")
-                        if hasattr(selected, "to_dict")
-                        else selected
-                    )
-                    st.json(records)
-        except ImportError:
-            _render_events_dataframe_fallback(df)
-    else:
-        _render_events_dataframe_fallback(df)
+    _render_events_dataframe_fallback(df)
 
 
 def _render_events_dataframe_fallback(df: pd.DataFrame) -> None:
@@ -435,5 +369,5 @@ def _render_events_dataframe_fallback(df: pd.DataFrame) -> None:
             "article_url": st.column_config.LinkColumn("Link", display_text="Open"),
         },
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
     )

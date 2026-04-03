@@ -73,7 +73,7 @@ def main() -> None:
                 mime="text/csv",
             )
 
-    render_events_table(display_events, use_aggrid=True, height=620, selection_mode="multiple")
+    render_events_table(display_events)
 
 
 if __name__ == "__main__":
