@@ -149,15 +149,17 @@ def _get_mitigation(event: dict, config) -> tuple[str, list[str], bool]:
 
     event_id = str(event.get("event_id") or "")
 
-    # Return stored mitigation first — it was written by a prior successful Groq call.
+    # Return stored mitigation only if it was written by a prior successful Groq call.
     # We identify AI-generated stored data by checking whether the description differs
     # from every deterministic fallback string; if it does, it came from the LLM.
+    # If the stored data is playbook/fallback, fall through to try Groq live.
     stored = event.get("mitigation_actions") or []
     stored_desc = event.get("mitigation_description") or ""
     if stored:
         all_fallback_descs = set(_FALLBACK_DESCRIPTIONS.values()) | {_DEFAULT_FALLBACK_DESC}
         ai_stored = stored_desc not in all_fallback_descs
-        return stored_desc, [str(a) for a in stored], ai_stored
+        if ai_stored:
+            return stored_desc, [str(a) for a in stored], True
 
     # No stored mitigation — try Groq live.
     if config.groq_api_key:
